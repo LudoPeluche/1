@@ -1,0 +1,129 @@
+---
+
+Fecha: 23/10/2025 (Continuación)
+
+Resumen de Avances
+- Se corrigió el bug en la gráfica "Evolución del Estado" del Dashboard.
+- La gráfica ya no usa datos de simulación.
+- Se implementó la lógica para cargar todas las inspecciones y calcular los totales de 'OK' y 'ALERTA' por mes, mostrando ahora los datos reales del proyecto.
+- Se añadió un botón "Historial" en la lista principal de activos para navegar directamente al historial de inspecciones de cada activo.
+
+Pendiente (sin cambios)
+- **BLOQUEADO:** Resolver el acceso a la API de Gemini contactando al soporte de Google Cloud, o cambiar la implementación a la API de OpenAI.
+- Refactorizar src/App.jsx (monolítico) en componentes más pequeños.
+- Crear índices de Firestore cuando la aplicación lo requiera.
+- Mover la lógica de IA a un backend para no exponer la clave de API en el cliente (seguridad).
+- Limpiar assets y CSS no utilizados.
+- Atender vulnerabilidades reportadas por 'npm audit'.
+
+---
+
+Fecha: 23/10/2025
+
+Resumen de Hoy
+- Se investigó exhaustivamente un error 404 persistente con la API de Gemini.
+- Se confirmó que la configuración del proyecto (código, variables de entorno, habilitación de API, clave sin restricciones) es correcta.
+- Se descubrió una política de Google que restringe el uso de modelos Gemini 1.5 en proyectos nuevos.
+- El error persiste incluso con el modelo 'gemini-pro', lo que confirma un problema a nivel de proyecto o cuenta en Google Cloud, fuera del alcance del código.
+
+Pendiente
+- **BLOQUEADO:** Resolver el acceso a la API de Gemini contactando al soporte de Google Cloud, o cambiar la implementación a la API de OpenAI.
+- Refactorizar src/App.jsx (monolítico) en componentes más pequeños.
+- Crear índices de Firestore cuando la aplicación lo requiera.
+- Mover la lógica de IA a un backend para no exponer la clave de API en el cliente (seguridad).
+- Limpiar assets y CSS no utilizados.
+- Atender vulnerabilidades reportadas por 'npm audit'.
+
+---
+
+Fecha: 22/10/2025
+
+Hecho hoy
+- Inventariado del proyecto y revisión de configuración (Vite, Tailwind, ESLint, Firebase, Gemini).
+- Reorganización mínima: moví `App.jsx` a `src/App.jsx` y actualicé el import en `src/main.jsx`.
+- Actualicé `tailwind.config.js` para escanear solo `src/**/*`.
+- Añadí `.env.example` con todas las variables necesarias y habilité `VITE_DEMO_MODE=true` por defecto.
+- Reescribí `README.md` con pasos de setup, seguridad e índices de Firestore.
+- Integré “Demo Mode” para ver la interfaz sin Firebase/Gemini y agregué fallback automático cuando la auth tarda o falla.
+- Endurecí la verificación de `VITE_GEMINI_API_KEY` (mensaje claro si falta al intentar usar IA).
+- Instalé dependencias y validé con `npm run build` (build exitoso).
+
+Pendiente
+- Confirmar que la UI carga en localhost con `VITE_DEMO_MODE=true` (demo).
+- Completar `/.env.local` con credenciales de Firebase y desactivar `VITE_DEMO_MODE` para usar datos reales.
+- Reglas de Firestore: restringir a `request.auth.uid == userId` y crear índices compuestos (assetId + date desc) cuando Firestore lo pida.
+- Mover llamada a Gemini a un backend/proxy en producción (no exponer API key en el cliente).
+- Refactorizar `src/App.jsx` (monolítico) en componentes: `AssetHistory`, `AssetList`, `InspectionForm`, `DashboardCards`.
+- Normalizar codificación UTF-8 y corregir tildes en textos/strings.
+- Limpiar assets/CSS de template no usados (`src/App.css`, `react.svg`, `vite.svg`) o integrarlos a Tailwind.
+- Reducir tamaño de bundle con code splitting (lazy import de vistas pesadas).
+- Añadir opción en UI para alternar Demo/Live sin editar `.env` (persistir en `localStorage`).
+- Revisar y tratar `npm audit` (2 vulnerabilidades moderadas) cuando convenga.
+
+Próximos pasos sugeridos
+- Para demo inmediata: `Copy-Item .env.example .env.local` y `npm start` → abrir http://localhost:5173.
+- Para entorno real: completar `VITE_FIREBASE_*`, (opcional) `VITE_GEMINI_API_KEY`, poner `VITE_DEMO_MODE=false` y reiniciar `npm start`.
+
+---
+
+Actualización 22/10/2025 (fin de día)
+- Configurado entorno real: `.env.local` con `VITE_DEMO_MODE=false` y credenciales de Firebase correctas.
+- Clave de Gemini añadida en `VITE_GEMINI_API_KEY`.
+- App carga en Live: autenticación gestionada (con manejo de error) y creación de activos funcionando.
+- Incidencia IA: al presionar “Generar Checklist (IA)” falla tras 3 reintentos con `HTTP 404` y muestra fallback de plantilla por defecto.
+  - Observación: el 404 sugiere modelo/endpoint de Gemini no válido. En `src/App.jsx` se usa `.../v1beta/models/gemini-1.5-flash-preview-0514:generateContent`, que puede estar retirado. Modelos estables recomendados: `gemini-1.5-flash` o `gemini-1.5-pro` (o sufijos `-001/-002`) usando el mismo path `v1beta/models/{MODEL}:generateContent`.
+
+Pendiente actualizado
+- Ajustar `GEMINI_API_URL` en `src/App.jsx` al modelo vigente (ej. `gemini-1.5-flash` o `gemini-1.5-flash-002`).
+- Probar nuevamente “Generar Checklist (IA)” y registrar respuesta/errores de la consola.
+- Crear índice compuesto en Firestore si aparece aviso al listar historial (assetId + date desc).
+- Opcional (seguridad): mover consumo de Gemini al backend para no exponer la API key en el cliente.
+
+Actualización 22/10/2025 (IA Gemini v1)
+- Reporte de error en UI: 404 con modelo preview y luego 400 con `gemini-1.5-flash-latest` por campos inválidos en payload.
+  - Mensaje (resumen): `Invalid JSON payload received. Unknown name "system_instruction" ... Unknown name "response_mime_type" ...`.
+- Cambios aplicados en `src/App.jsx`:
+  - Parametrizado endpoint estable: `VITE_GEMINI_API_VERSION=v1`, `VITE_GEMINI_MODEL` (por defecto `gemini-1.5-flash-latest`).
+    - Ver: `src/App.jsx: GEMINI_MODEL`, `GEMINI_API_VERSION`, `GEMINI_API_URL`.
+  - Eliminado uso de campos no soportados por v1: `system_instruction`, `generationConfig.response_mime_type` y `response_schema`.
+  - Reunido todo el prompt (instrucciones + entrada) en `contents[0].parts[0].text` con `role: 'user'` en:
+    - Generar Checklist (IA): función `handleGenerateChecklist`.
+    - Analizar Criticidad (IA): función `handleAnalyzeCriticality`.
+  - Añadidos logs de depuración en `fetchGemini` (intento, modelo, body de error truncado).
+- Env actualizado:
+  - `.env.local` y `.env.example`: añadidos `VITE_GEMINI_MODEL=gemini-1.5-flash-latest` y `VITE_GEMINI_API_VERSION=v1`.
+- Validación: `npm run build` exitoso.
+
+Pruebas sugeridas
+- Reiniciar dev server (`npm start`) para recargar env y código.
+- Probar “Analizar Criticidad (IA)” y “Generar Checklist (IA)”.
+- Si el modelo responde con texto extra (no JSON puro), considerar sanitizar antes de `JSON.parse` (pendiente opcional).
+---
+
+Fecha: 23/10/2025 (Actualización UI y DX)
+
+Hecho
+- Dashboard > Evolución del Estado (Últimos 12 meses)
+  - Sustituido dataset simulado por conteo real desde Firestore (`allInspections`).
+  - Orden fijo de meses Ene..Dic y filtro a los últimos 12 meses.
+  - Ajustado gráfico SVG para que todo quede dentro de la tarjeta: márgenes internos y ejes redibujados.
+  - Eje X elevado a `bottom = 135` y etiquetas de meses visibles (`fontSize=9`).
+  - Etiquetas del eje Y más pequeñas (`fontSize=7`).
+  - Barras más esbeltas (`width=16`) y separación `barGap=30`.
+- Lista “Mis Activos”
+  - Nuevo botón “Historial” en cada activo → navega a vista `assetHistory`.
+- Firestore / Datos
+  - Nuevo listener de inspecciones (`allInspections`) para alimentar el dashboard (hasta 500 registros, `orderBy('date','desc')`).
+- Configuración Firebase
+  - Lectura de config desde `.env` (`VITE_FIREBASE_*`) además de variables globales inyectadas.
+  - Si falta config, se muestra error y no queda bloqueado el “Cargando…”.
+- Estilos / Tailwind
+  - Añadido `h-90` en `tailwind.config.js` (`22.5rem`).
+  - Tarjeta de evolución: misma anchura (`lg:col-span-2`), mayor altura (`h-90`) y `overflow-hidden`.
+
+Estado
+- Build con Vite: OK.
+
+Pendiente sugerido
+- Opcional: mover leyenda dentro del área del gráfico (arriba-derecha) para ganar aún más espacio al eje X.
+- Opcional: query con `where('date','>=', cutoff)` para traer directamente últimos 12 meses (requerirá índice).
