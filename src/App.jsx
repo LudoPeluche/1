@@ -183,13 +183,11 @@ const AssetHistory = ({ db, userId, appId, asset, onBack }) => {
         <div className="space-y-6">
             <div className="flex justify-between items-start bg-gray-800 p-6 rounded-xl shadow-2xl border-b border-gray-700">
                 <div>
-                    <h2 className="text-3xl font-bold text-teal-400">{asset.name}</h2>
+                    <h2 className="text-3xl font-bold text-teal-400">{asset.tag ? `${asset.tag} - ${asset.name}` : asset.name}</h2>
                     <p className="text-sm text-gray-300 mt-1">
-                        Ubicación: {asset.location || 'N/D'}
-                        {asset.tag ? ` | Tag: ${asset.tag}` : ''}
+                        Ubicación: {asset.location || 'N/D'} <span className="font-bold">{asset.criticality}</span>
                         {asset.description ? ` | ${asset.description}` : ''}
                         {` | Última inspección: ${lastInspection?.date ? lastInspection.date.toLocaleDateString() : 'N/A'}`}
-                        {` | Criticidad: ${asset.criticality || 'N/D'}`}
                     </p>
                 </div>
                 <button
@@ -259,7 +257,7 @@ const AssetHistory = ({ db, userId, appId, asset, onBack }) => {
                     <>
                       <div className="mb-4 flex justify-between items-center border-b border-gray-700 pb-2">
                         <h3 className="text-2xl font-bold text-white">Registro del {selectedInspection.date.toLocaleDateString()}</h3>
-                        <span className="px-2 py-1 rounded bg-gray-700 text-gray-200">Criticidad: {asset.criticality}\n                                            </span>
+
                       </div>
                       <div className="space-y-3 h-80 overflow-y-auto">
                         {selectedInspection.results.map((r,idx)=> (
@@ -947,7 +945,7 @@ DescripciÃ³n del Activo: "${newAssetDescription}". Devuelve SOLO el objeto JSO
                             <div className="space-y-4">
                                 <input required value={newAssetName} onChange={(e) => setNewAssetName(e.target.value)} placeholder="Nombre del Activo" className="w-full px-3 py-2 rounded bg-gray-700 border border-gray-600" />
                                 <input value={newAssetLocation} onChange={(e) => setNewAssetLocation(e.target.value)} placeholder="Ubicación" className="w-full px-3 py-2 rounded bg-gray-700 border border-gray-600" />
-                                <textarea value={newAssetDescription} onChange={(e) => setNewAssetDescription(e.target.value)} placeholder="DescripciÃ³n (para anÃ¡lisis de IA)" rows="3" className="w-full px-3 py-2 rounded bg-gray-700 border border-gray-600" />
+                                <textarea value={newAssetDescription} onChange={(e) => setNewAssetDescription(e.target.value)} placeholder="Descripcion del Activo" rows="3" className="w-full px-3 py-2 rounded bg-gray-700 border border-gray-600" />
                                 <input value={newAssetTag} onChange={(e) => setNewAssetTag(e.target.value)} placeholder="Tag del Activo" className="w-full px-3 py-2 rounded bg-gray-700 border border-gray-600" />
                             </div>
                             <div className="space-y-4">
@@ -977,17 +975,14 @@ DescripciÃ³n del Activo: "${newAssetDescription}". Devuelve SOLO el objeto JSO
                                 {filteredAssets.map(asset => (
                                     <div key={asset.id} className="p-4 bg-gray-700 rounded-lg flex justify-between items-center">
                                         <div>
-                                            <p className="font-bold text-lg">{asset.name}</p>
-                                            <p className="text-sm text-gray-400">{asset.location}</p>
+                                            <p className="font-bold text-lg">{asset.tag ? `${asset.tag} - ${asset.name}` : asset.name}</p>
+                                            <p className="text-sm text-gray-400">Ubicacion: "{asset.location}" Criticidad: "{asset.criticality}"</p>
                                         </div>
                                         <div className="flex items-center gap-3">
-                                            <span className={`px-2 py-1 text-xs font-bold rounded-full ${getCriticalityColor(asset.criticality)}`}>
-                                                Criticidad: {asset.criticality}\n                                            
-                                            </span>
                                             <span className={`px-2 py-1 text-xs font-bold rounded-full ${asset.status === 'ALERT' ? 'bg-red-500' : asset.status === 'OK' ? 'bg-green-500' : 'bg-gray-500'}`}>
                                                 {asset.status || 'Uninspected'}
                                             </span>
-                                            <button className="px-3 py-1 rounded bg-gray-600 hover:bg-gray-500" onClick={() => navigateToView('assetHistory', asset)}>Historial</button>
+                                            <button className="px-3 py-1 rounded bg-gray-600 hover:bg-gray-500" onClick={() => navigateToView('assetHistory', asset)}>Detalle del Activo</button>
                                             <button className="px-3 py-1 rounded bg-teal-600 hover:bg-teal-500" onClick={() => navigateToView('inspection', asset)}>Inspeccionar</button>
                                         </div>
                                     </div>
