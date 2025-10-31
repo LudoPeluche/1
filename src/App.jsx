@@ -1,8 +1,8 @@
 ﻿import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, collection, onSnapshot, addDoc, query, serverTimestamp, doc, updateDoc, orderBy, limit, where, setLogLevel } from 'firebase/firestore';
-import { Plus, CheckCircle, List, BarChart2, Loader, AlertTriangle, ArrowLeft, Clock, Target, BarChart, Calendar, FileText, Search } from 'lucide-react';
+import { getFirestore, collection, onSnapshot, addDoc, query, serverTimestamp, doc, updateDoc, orderBy, limit, where, setLogLevel, deleteDoc } from 'firebase/firestore';
+import { Plus, CheckCircle, List, BarChart2, Loader, AlertTriangle, ArrowLeft, Clock, Target, BarChart, Calendar, FileText, Search, Trash2 } from 'lucide-react';
 
 // --- FIREBASE SETUP ---
 const firebaseConfig = {
@@ -134,10 +134,23 @@ const StatusTrendChart = ({ points = [] }) => {
   );
 };
 
-const AssetHistory = ({ db, userId, appId, asset, onBack }) => {
+const AssetHistory = ({ db, userId, appId, asset, onBack, onInspect }) => {
     const [historyInspections, setHistoryInspections] = useState([]);
     const [selectedInspection, setSelectedInspection] = useState(null);
     const [loadingHistory, setLoadingHistory] = useState(true);
+
+    const handleDeleteAsset = async () => {
+        if (window.confirm(`¿Estás seguro de que quieres eliminar el activo "${asset.name}"? Esta acción no se puede deshacer.`)) {
+            try {
+                const assetDocRef = doc(db, `/artifacts/${appId}/users/${userId}/assets`, asset.id);
+                await deleteDoc(assetDocRef);
+                onBack();
+            } catch (error) {
+                console.error("Error deleting asset:", error);
+                // Optionally, show an error message to the user
+            }
+        }
+    };
 
     useEffect(() => {
         if (!db || !userId || !asset?.id) return;
@@ -190,14 +203,28 @@ const AssetHistory = ({ db, userId, appId, asset, onBack }) => {
                         {` | Última inspección: ${lastInspection?.date ? lastInspection.date.toLocaleDateString() : 'N/A'}`}
                     </p>
                 </div>
-                <button
-                    onClick={() => {
-                        setSelectedInspection(null); onBack();
-                    }}
-                    className="px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded-lg text-white transition duration-150 flex items-center"
-                >
-                    <ArrowLeft className="w-4 h-4 mr-2" /> Volver a Dashboard
-                </button>
+                <div className="flex gap-2">
+                    <button
+                        onClick={() => {
+                            setSelectedInspection(null); onBack();
+                        }}
+                        className="px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded-lg text-white transition duration-150 flex items-center"
+                    >
+                        <ArrowLeft className="w-4 h-4 mr-2" /> Volver a Dashboard
+                    </button>
+                    <button
+                        onClick={handleDeleteAsset}
+                        className="px-4 py-2 bg-red-600 hover:bg-red-500 rounded-lg text-white transition duration-150 flex items-center"
+                    >
+                        <Trash2 className="w-4 h-4 mr-2" /> Eliminar Activo
+                    </button>
+                    <button
+                        onClick={() => onInspect ? onInspect(asset) : null}
+                        className="px-4 py-2 bg-teal-600 hover:bg-teal-500 rounded-lg text-white transition duration-150 flex items-center"
+                    >
+                        <FileText className="w-4 h-4 mr-2" /> Inspeccionar
+                    </button>
+                </div>
             </div>
             {/* Tendencia + KPIs */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -207,7 +234,12 @@ const AssetHistory = ({ db, userId, appId, asset, onBack }) => {
                 </div>
                 <div className="lg:col-span-1 grid grid-cols-1 gap-4">
                     <div className="bg-gray-800 p-4 rounded-xl">
-                        <p className="text-sm text-gray-400">Ãšltimo crÃ­tico (C)</p>
+                        <p
+                            className="text-sm text-gray-400"
+                            title="Fecha de la inspección más reciente en la que el activo quedó en estado crítico (C) o ALERT."
+                        >
+                            Última alerta registrada (C)
+                        </p>
                         <p className="text-2xl font-bold mt-1">{lastCritical?.date ? lastCritical.date.toLocaleDateString() : 'N/A'}</p>
                     </div>
                     <div className="bg-gray-800 p-4 rounded-xl">
@@ -410,11 +442,11 @@ const Dashboard = ({ assets, latestInspections, allInspections, onInspectAssetHi
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div className="bg-gray-800 p-6 rounded-xl shadow-xl border-t-4 border-indigo-500">
-                    <p className="text-xl font-semibold text-indigo-300 mb-4">EvoluciÃ³n Mensual de Inspecciones</p>
+                    <p className="text-xl font-semibold text-indigo-300 mb-4">Evolucion Mensual de Inspecciones</p>
                     <AssetEvolutionChart data={monthlyEvolutionData} />
                 </div>
                 <div className="bg-gray-800 p-6 rounded-xl shadow-xl border-t-4 border-pink-500">
-                    <p className="text-xl font-semibold text-pink-300 mb-4">Ãšltimas Inspecciones Registradas</p>
+                    <p className="text-xl font-semibold text-pink-300 mb-4">Ultimas Inspecciones Registradas</p>
                     {latestInspections.length === 0 ? (
                         <p className="text-gray-400 italic">No hay inspecciones recientes.</p>
                     ) : (
@@ -567,7 +599,7 @@ const InspectionForm = ({ asset, onBack, onSave, loading }) => {
                                         <span>{item.text}</span>
                                     </label>
                                     {!item.cumple && (
-                                        <textarea className="w-full mt-3 p-2 bg-gray-600 border border-gray-500 rounded-lg focus:ring-teal-500 focus:border-teal-500 text-sm" rows="2" placeholder="ObservaciÃ³n (obligatoria si no cumple)" value={item.comment} onChange={(e)=>setComment(item.index, e.target.value)} />
+                                        <textarea className="w-full mt-3 p-2 bg-gray-600 border border-gray-500 rounded-lg focus:ring-teal-500 focus:border-teal-500 text-sm" rows="2" placeholder="Observacion(obligatoria si no cumple) " value={item.comment} onChange={(e)=>setComment(item.index, e.target.value)} />
                                     )}
                                 </div>
                             ))}
@@ -588,7 +620,7 @@ const InspectionForm = ({ asset, onBack, onSave, loading }) => {
                                         <span>{item.text}</span>
                                     </label>
                                     {!item.cumple && (
-                                        <textarea className="w-full mt-3 p-2 bg-gray-600 border border-gray-500 rounded-lg focus:ring-teal-500 focus:border-teal-500 text-sm" rows="2" placeholder="ObservaciÃ³n (obligatoria si no cumple)" value={item.comment} onChange={(e)=>setComment(item.index, e.target.value)} />
+                                        <textarea className="w-full mt-3 p-2 bg-gray-600 border border-gray-500 rounded-lg focus:ring-teal-500 focus:border-teal-500 text-sm" rows="2" placeholder="Observacion(obligatoria si no cumple) " value={item.comment} onChange={(e)=>setComment(item.index, e.target.value)} />
                                     )}
                                 </div>
                             ))}
@@ -1018,6 +1050,7 @@ DescripciÃ³n del Activo: "${newAssetDescription}". Devuelve SOLO el objeto JSO
                     appId={appId}
                     asset={selectedAsset}
                     onBack={() => navigateToView('dashboard')}
+                    onInspect={(asset) => navigateToView('inspection', asset)}
                 />
             )}
 
