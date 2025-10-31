@@ -57,34 +57,34 @@ const DEFAULT_IV_IS_CHECKLIST = [
   { category: 'IS', text: 'Superficies sin riesgo potencial de resbalamiento' },
   { category: 'IS', text: 'Sin riesgo de descarga elÃ©ctrica' },
   { category: 'IS', text: 'Sin gases ni olores inusuales' },
-  { category: 'IS', text: 'Sin residuos en suspensiÃ³n' },
+  { category: 'IS', text: 'Sin residuos en suspension' },
   { category: 'IS', text: 'Sin riesgo para la vista' },
-  { category: 'IS', text: 'Sin riesgo de caÃ­das' },
+  { category: 'IS', text: 'Sin riesgo de caidas' },
   { category: 'IS', text: 'Componentes de giro correctamente protegidos' },
-  { category: 'IS', text: 'Sin sobreexposiciÃ³n al calor' },
+  { category: 'IS', text: 'Sin sobreexposicion de calor' },
   { category: 'IS', text: 'Sin riesgo de desenganche' },
-  { category: 'IS', text: 'Visibilidad adecuada en el Ã¡rea' },
+  { category: 'IS', text: ' Visibilidad adecuada en el Area' },
   { category: 'IS', text: 'Sin riesgo de llamas abiertas' },
-  { category: 'IS', text: 'Sin exposiciÃ³n a chispas o radiaciÃ³n ultravioleta' },
+  { category: 'IS', text: 'Sin exposicion a chispas o radiacion ultravioleta' },
   { category: 'IS', text: 'Equipos bien cuidados y almacenados adecuadamente' },
-  { category: 'IS', text: 'Rutas de entrada y salida mÃºltiples y despejadas' },
+  { category: 'IS', text: ' Rutas de entrada y salida multiples y despejadas' },
   { category: 'IS', text: 'Escaleras y puntos de apoyo estables' },
   { category: 'IS', text: 'Sin riesgo por desplazamiento de material' },
-  { category: 'IS', text: 'Materiales cÃ¡usticos correctamente contenidos y con EPP disponible' },
+  { category: 'IS', text: 'Materiales causticos correctamente contenidos y con EPP disponible' },
   { category: 'IS', text: 'Etiquetado correcto y visible' },
   { category: 'IS', text: 'Ejes y poleas protegidos y seÃ±alizados' },
-  { category: 'IS', text: 'Puntos de sujeciÃ³n adecuados' },
+  { category: 'IS', text: 'Puntos de sujecion adecuados' },
   { category: 'IS', text: 'EPP disponible y en uso cuando corresponde' },
-  { category: 'IS', text: 'Sin fuga tÃ©rmica' },
-  { category: 'IS', text: 'Superficies escalonadas visibles y seÃ±alizadas' },
-  { category: 'IS', text: 'Superficies de trÃ¡nsito regulares y sin orificios' },
-  { category: 'IS', text: 'Sin superficies con temperaturas peligrosas sin protecciÃ³n' },
+  { category: 'IS', text: 'Sin fuga terrmica' },
+  { category: 'IS', text: 'Superficies escalonadas visibles y señalizadas' },
+  { category: 'IS', text: 'Superficies de transito regulares y sin orificios' },
+  { category: 'IS', text: ' Sin superficies con temperaturas peligrosas sin proteccion' },
   { category: 'IS', text: 'Superficies no resbaladías o con tratamiento antideslizante' },
   { category: 'IS', text: 'Sin agua o aceite estancado' },
   { category: 'IS', text: 'Sin riesgo de chorro de aire' },
-  { category: 'IS', text: 'Sin riesgo de succiÃ³n cerca de ventiladores u otros equipos' },
+  { category: 'IS', text: 'Sin riesgo de succion cerca de ventiladores u otros equipos' },
   { category: 'IS', text: 'Sin bordes afilados expuestos' },
-  { category: 'IS', text: 'Sin ruido elevado o dentro de lÃ­mites controlados' },
+  { category: 'IS', text: ' Sin ruido elevado o dentro de limites controlados' },
   { category: 'IS', text: 'Sin descargas repentinas o violentas de aire' },
   { category: 'IS', text: 'Sin riesgo de explosiones o descargas repentinas' },
   { category: 'IS', text: 'Advertencia y ajuste correcto de prendas o equipos' },
@@ -482,6 +482,42 @@ const Dashboard = ({ assets, latestInspections, allInspections, onInspectAssetHi
 };
 
 const InspectionForm = ({ asset, onBack, onSave, loading }) => {
+    const normalizeText = useCallback((text) => {
+        const map = [
+            ['Sin residuos en suspensión', 'Sin residuos en suspension'],
+            ['Sin residuos en suspensiÃ³n', 'Sin residuos en suspension'],
+            ['Sin riesgo de caídas', 'Sin riesgo de caidas'],
+            ['Sin riesgo de caÃ­das', 'Sin riesgo de caidas'],
+            ['Sin sobreexposición al calor', 'Sin sobreexposicion de calor'],
+            ['Sin sobreexposiciÃ³n al calor', 'Sin sobreexposicion de calor'],
+            ['Visibilidad adecuada en el área', ' Visibilidad adecuada en el Area'],
+            ['Visibilidad adecuada en el Ã¡rea', ' Visibilidad adecuada en el Area'],
+            ['Sin exposición a chispas o radiación ultravioleta', 'Sin exposicion a chispas o radiacion ultravioleta'],
+            ['Sin exposiciÃ³n a chispas o radiaciÃ³n ultravioleta', 'Sin exposicion a chispas o radiacion ultravioleta'],
+            ['Rutas de entrada y salida múltiples y despejadas', ' Rutas de entrada y salida multiples y despejadas'],
+            ['Rutas de entrada y salida mÃºltiples y despejadas', ' Rutas de entrada y salida multiples y despejadas'],
+            ['Materiales cáusticos correctamente contenidos y con EPP disponible', 'Materiales causticos correctamente contenidos y con EPP disponible'],
+            ['Materiales cÃ¡usticos correctamente contenidos y con EPP disponible', 'Materiales causticos correctamente contenidos y con EPP disponible'],
+            ['Puntos de sujeción adecuados', 'Puntos de sujecion adecuados'],
+            ['Puntos de sujeciÃ³n adecuados', 'Puntos de sujecion adecuados'],
+            ['Sin fuga térmica', 'Sin fuga terrmica'],
+            ['Sin fuga tÃ©rmica', 'Sin fuga terrmica'],
+            ['Superficies escalonadas visibles y señalizadas', 'Superficies escalonadas visibles y señalizadas'],
+            ['Superficies escalonadas visibles y seÃ±alizadas', 'Superficies escalonadas visibles y señalizadas'],
+            ['Superficies de tránsito regulares y sin orificios', 'Superficies de transito regulares y sin orificios'],
+            ['Superficies de trÃ¡nsito regulares y sin orificios', 'Superficies de transito regulares y sin orificios'],
+            ['Sin superficies con temperaturas peligrosas sin protección', ' Sin superficies con temperaturas peligrosas sin proteccion'],
+            ['Sin superficies con temperaturas peligrosas sin protecciÃ³n', ' Sin superficies con temperaturas peligrosas sin proteccion'],
+            ['Sin riesgo de succión cerca de ventiladores u otros equipos', 'Sin riesgo de succion cerca de ventiladores u otros equipos'],
+            ['Sin riesgo de succiÃ³n cerca de ventiladores u otros equipos', 'Sin riesgo de succion cerca de ventiladores u otros equipos'],
+            ['Sin ruido elevado o dentro de límites controlados', ' Sin ruido elevado o dentro de limites controlados'],
+            ['Sin ruido elevado o dentro de lÃ­mites controlados', ' Sin ruido elevado o dentro de limites controlados']
+        ];
+        for (const [bad, good] of map) {
+            if (text === bad) return good;
+        }
+        return text;
+    }, []);
     const [results, setResults] = useState([]);
     const [notes, setNotes] = useState('');
     const [overall, setOverall] = useState('B');
@@ -493,7 +529,7 @@ const InspectionForm = ({ asset, onBack, onSave, loading }) => {
             const initialResults = asset.checklist.map((item, index) => ({
                 index,
                 category: item.category || 'IV',
-                text: item.text,
+                text: normalizeText(item.text),
                 cumple: false, // inicia sin marcar
                 comment: '',
             }));
