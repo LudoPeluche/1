@@ -92,7 +92,7 @@ const StatusTrendChart = ({ points = [] }) => {
   );
 };
 
-const AssetHistory = ({ db, userId, appId, asset, onBack, onInspect }) => {
+const AssetHistory = ({ db, tenantId, asset, onBack, onInspect }) => {
     const [historyInspections, setHistoryInspections] = useState([]);
     const [selectedInspection, setSelectedInspection] = useState(null);
     const [loadingHistory, setLoadingHistory] = useState(true);
@@ -111,9 +111,9 @@ const AssetHistory = ({ db, userId, appId, asset, onBack, onInspect }) => {
     };
 
     useEffect(() => {
-        if (!db || !userId || !asset?.id) return;
+        if (!db || !tenantId || !asset?.id) return;
         setLoadingHistory(true);
-        const inspectionCollectionPath = `/artifacts/${appId}/users/${userId}/inspections`;
+        const inspectionCollectionPath = `/tenants/${tenantId}/inspections`;
         const inspectionsColRef = collection(db, inspectionCollectionPath);
         const q = query(
             inspectionsColRef,
@@ -136,7 +136,7 @@ const AssetHistory = ({ db, userId, appId, asset, onBack, onInspect }) => {
             setLoadingHistory(false);
         });
         return () => unsubscribe();
-    }, [db, userId, appId, asset]);
+    }, [db, tenantId, asset]);
 
     // Tendencia y KPIs
     const statusToScore = (s) => (s === 'A' ? 3 : s === 'B' ? 2 : s === 'C' ? 1 : s === 'OK' ? 3 : s === 'ALERT' ? 1 : 0);
@@ -685,6 +685,9 @@ const App = () => {
     const [activeView, setActiveView] = useState('list');
     const [selectedAsset, setSelectedAsset] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
+    // Multi-tenant state
+    const [tenantId, setTenantId] = useState(() => localStorage.getItem('tenantId') || appId);
+    const [isSuperAdmin, setIsSuperAdmin] = useState(false);
 
     const navigateToView = useCallback((view, asset = null) => {
         setActiveView(view);
@@ -697,37 +700,41 @@ const App = () => {
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
             if (user) {
                 setUser(user);
+                // Super admin check via 'admins' collection (global)
                 const adminDocRef = doc(db, 'admins', user.uid);
                 const adminDoc = await getDoc(adminDocRef);
-                if (adminDoc.exists()) {
-                    setUserRole('admin');
-                } else {
-                    const userDocRef = doc(db, `/artifacts/${appId}/users`, user.uid);
-                    const userDoc = await getDoc(userDocRef);
-                    if (userDoc.exists()) {
-                        setUserRole(userDoc.data().role || 'technician');
-                    } else {
-                        await setDoc(userDocRef, {
-                            email: user.email,
-                            displayName: user.displayName,
-                            role: 'technician',
-                            createdAt: serverTimestamp(),
-                        });
-                        setUserRole('technician');
-                    }
-                }
+                setIsSuperAdmin(adminDoc.exists());
             } else {
                 setUser(null);
                 setUserRole(null);
+                setIsSuperAdmin(false);
             }
             setIsAuthReady(true);
         });
         return () => unsubscribe();
     }, []);
 
+    // Resolve role inside selected tenant
     useEffect(() => {
-        if (user) {
-            const assetCollectionPath = `/artifacts/${appId}/users/${user.uid}/assets`;
+        const run = async () => {
+            if (!user) return;
+            if (!tenantId) { setUserRole(isSuperAdmin ? 'superadmin' : null); return; }
+            try {
+                const memberDocRef = doc(db, `/tenants/${tenantId}/members`, user.uid);
+                const m = await getDoc(memberDocRef);
+                if (m.exists()) setUserRole(m.data().role || 'technician');
+                else setUserRole(isSuperAdmin ? 'superadmin' : null);
+            } catch (e) {
+                console.error('Error loading member role:', e);
+                setUserRole(isSuperAdmin ? 'superadmin' : null);
+            }
+        };
+        run();
+    }, [db, user, tenantId, isSuperAdmin]);
+
+    useEffect(() => {
+        if (user && tenantId) {
+            const assetCollectionPath = `/tenants/${tenantId}/assets`;
             const assetsColRef = collection(db, assetCollectionPath);
             const q = query(assetsColRef);
             const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -744,11 +751,11 @@ const App = () => {
             });
             return () => unsubscribe();
         }
-    }, [user]);
+    }, [user, tenantId]);
 
     useEffect(() => {
-        if (user) {
-            const inspectionCollectionPath = `/artifacts/${appId}/users/${user.uid}/inspections`;
+        if (user && tenantId) {
+            const inspectionCollectionPath = `/tenants/${tenantId}/inspections`;
             const inspectionsColRef = collection(db, inspectionCollectionPath);
             const q = query(inspectionsColRef, orderBy('date', 'desc'), limit(10));
             const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -778,7 +785,7 @@ const App = () => {
                 unsubAll();
             };
         }
-    }, [user]);
+    }, [user, tenantId]);
 
     const filteredAssets = useMemo(() => {
         if (!searchTerm) return assets;
@@ -801,7 +808,7 @@ const App = () => {
         setLoading(true);
         setError(null);
         try {
-            const assetCollectionPath = `/artifacts/${appId}/users/${user.uid}/assets`;
+            const assetCollectionPath = `/tenants/${tenantId}/assets`;
             const finalChecklist = FULL_IV_IS_CHECKLIST;
             await addDoc(collection(db, assetCollectionPath), {
                 name: newAssetName,
@@ -824,14 +831,14 @@ const App = () => {
         } finally {
             setLoading(false);
         }
-    }, [db, user, newAssetName, newAssetLocation, newAssetTag, newAssetDescription, newAssetCriticality]);
+    }, [db, user, tenantId, newAssetName, newAssetLocation, newAssetTag, newAssetDescription, newAssetCriticality]);
 
     const handleSaveInspection = useCallback(async (results, notes, overallStatus) => {
         if (!user || !selectedAsset) return;
         setLoading(true);
         setError(null);
         try {
-            const inspectionCollectionPath = `/artifacts/${appId}/users/${user.uid}/inspections`;
+            const inspectionCollectionPath = `/tenants/${tenantId}/inspections`;
             await addDoc(collection(db, inspectionCollectionPath), {
                 assetId: selectedAsset.id,
                 assetName: selectedAsset.name,
@@ -841,7 +848,7 @@ const App = () => {
                 notes: notes,
                 overallStatus: overallStatus,
             });
-            const assetDocRef = doc(db, `/artifacts/${appId}/users/${user.uid}/assets`, selectedAsset.id);
+            const assetDocRef = doc(db, `/tenants/${tenantId}/assets`, selectedAsset.id);
             await updateDoc(assetDocRef, {
                 status: overallStatus,
                 lastInspectionDate: serverTimestamp(),
@@ -855,7 +862,7 @@ const App = () => {
             setError("Error al guardar la Inspección: " + e.message);
             setLoading(false);
         }
-    }, [user, selectedAsset]);
+    }, [user, tenantId, selectedAsset]);
 
     const handleLogout = async () => {
         await signOut(auth);
@@ -887,7 +894,7 @@ const App = () => {
                         >
                             <List className="w-5 h-5 mr-2" /> Activos
                         </button>
-                        {userRole === 'admin' && (
+                        {(userRole === 'admin' || userRole === 'superadmin') && (
                             <button
                                 onClick={() => navigateToView('dashboard')}
                                 className={`px-3 py-2 rounded-lg font-semibold transition duration-150 flex items-center ${activeView === 'dashboard' ? 'bg-teal-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
@@ -917,7 +924,7 @@ const App = () => {
 
             {activeView === 'list' && (
                 <>
-                    {userRole === 'admin' && (
+                    {(userRole === 'admin' || userRole === 'superadmin') && (
                         <div className="bg-gray-800 p-6 rounded-xl shadow-2xl mb-8">
                             <h2 className="text-2xl font-semibold mb-4 flex items-center text-teal-300">
                                 <Plus className="w-6 h-6 mr-2" /> Crear Nuevo Activo
@@ -984,7 +991,7 @@ const App = () => {
                 />
             )}
 
-            {activeView === 'dashboard' && userRole === 'admin' && (
+            {activeView === 'dashboard' && (userRole === 'admin' || userRole === 'superadmin') && (
                 <Dashboard
                     assets={assets}
                     latestInspections={latestInspections}
@@ -993,11 +1000,10 @@ const App = () => {
                 />
             )}
 
-            {activeView === 'assetHistory' && selectedAsset && db && user && appId && (
+            {activeView === 'assetHistory' && selectedAsset && db && user && tenantId && (
                 <AssetHistory
                     db={db}
-                    userId={user.uid}
-                    appId={appId}
+                    tenantId={tenantId}
                     asset={selectedAsset}
                     onBack={() => navigateToView(userRole === 'admin' ? 'dashboard' : 'list')}
                     onInspect={(asset) => navigateToView('inspection', asset)}
@@ -1012,6 +1018,7 @@ const App = () => {
 };
 
 export default App;
+
 
 
 
