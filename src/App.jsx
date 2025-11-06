@@ -1,102 +1,60 @@
-﻿import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, collection, onSnapshot, addDoc, query, serverTimestamp, doc, updateDoc, orderBy, limit, where, setLogLevel, deleteDoc } from 'firebase/firestore';
-import { Plus, CheckCircle, List, BarChart2, Loader, AlertTriangle, ArrowLeft, Clock, Target, BarChart, Calendar, FileText, Search, Trash2 } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { auth, db } from './firebase';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { collection, onSnapshot, addDoc, query, serverTimestamp, doc, updateDoc, orderBy, limit, where, setLogLevel, deleteDoc, getDoc, setDoc } from 'firebase/firestore';
+// Iconos (lucide-react)
+import { Loader, ArrowLeft, List, LogOut, BarChart2, Plus, AlertTriangle, FileText, Trash2, CheckCircle, Target as TargetIcon, Clock, Calendar } from 'lucide-react';
+import Login from './components/Login';
 
-// --- FIREBASE SETUP ---
-const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-};
 const appId = import.meta.env.VITE_APP_ID || 'default-app-id';
 
-// (IA removida) ConfiguraciÃ³n de Gemini eliminada
+// Full IV/IS checklist (fallback y para nuevos activos)
+const FULL_IV_IS_CHECKLIST = [
+  // IV — Inspecciones Visuales / Operativas
+  { category: 'IV', text: 'Nivel de aceite adecuado' },
+  { category: 'IV', text: 'Fugas de aceite o lubricante' },
+  { category: 'IV', text: 'Fugas de agua o refrigerante' },
+  { category: 'IV', text: 'Vibraciones anormales (tacto/oido)' },
+  { category: 'IV', text: 'Ruidos anormales o golpeteos' },
+  { category: 'IV', text: 'Temperatura de carcasa elevada' },
+  { category: 'IV', text: 'Tornilleria/abrazaderas flojas' },
+  { category: 'IV', text: 'Corrosion u oxidacion visible' },
+  { category: 'IV', text: 'Alineacion de poleas/acoples' },
+  { category: 'IV', text: 'Estado de correas (tension y desgaste)' },
+  { category: 'IV', text: 'Estado de acoples y chavetas' },
+  { category: 'IV', text: 'Guardas mecanicas en buen estado' },
+  { category: 'IV', text: 'Cables electricos sin danos' },
+  { category: 'IV', text: 'Conexiones electricas firmes' },
+  { category: 'IV', text: 'Suciedad/polvo acumulado en el equipo' },
+  { category: 'IV', text: 'Rejillas/ventilacion sin obstrucciones' },
+  { category: 'IV', text: 'Base/soportes sin fisuras ni juego' },
+  { category: 'IV', text: 'Sellos y empaques sin fugas' },
+  { category: 'IV', text: 'Filtros limpios/ciclo de limpieza vigente' },
+  { category: 'IV', text: 'Manometros/indicadores en rangos normales' },
+  { category: 'IV', text: 'Puntos calientes visibles (inspeccion visual)' },
+  { category: 'IV', text: 'Holguras o desalineaciones visibles' },
+  { category: 'IV', text: 'Presencia de condensacion/goteos' },
+  { category: 'IV', text: 'Necesidad de relubricacion inmediata' },
+  { category: 'IV', text: 'Etiquetado/identificacion legible' },
 
-const defaultChecklist = [
-    { text: "Verificar nivel de aceite (visual)", type: "boolean" },
-    { text: "Detectar vibraciÃ³n anormal (tacto/oÃ­do)", type: "boolean" },
-    { text: "Temperatura superficial (tacto/termÃ³metro)", type: "text" },
-    { text: "Presencia de fugas o derrames", type: "boolean" },
+  // IS — Inspecciones de Seguridad
+  { category: 'IS', text: 'Guardas de seguridad instaladas y fijas' },
+  { category: 'IS', text: 'Paros de emergencia accesibles' },
+  { category: 'IS', text: 'Botoneras/cajas electricas en buen estado' },
+  { category: 'IS', text: 'Orden y limpieza del area (5S)' },
+  { category: 'IS', text: 'Pasillos libres de obstaculos' },
+  { category: 'IS', text: 'Senalizacion y etiquetas de seguridad presentes' },
+  { category: 'IS', text: 'Niveles de ruido dentro de limites' },
+  { category: 'IS', text: 'Iluminacion adecuada en el area' },
+  { category: 'IS', text: 'Sin superficies calientes expuestas' },
+  { category: 'IS', text: 'Sin puntos de atrapamiento sin resguardo' },
+  { category: 'IS', text: 'Extintor cercano y accesible' },
+  { category: 'IS', text: 'Uso de EPI adecuado por el personal' },
+  { category: 'IS', text: 'Control de derrames (bandejas, absorbente)' },
+  { category: 'IS', text: 'Cables/mangueras enrutados de forma segura' },
 ];
 
-// Lista IV/IS por defecto para nuevas inspecciones
-const DEFAULT_IV_IS_CHECKLIST = [
-  { category: 'IV', text: 'Conexiones a tierra intactas y sin peladías' },
-  { category: 'IV', text: 'Protecciones de acoplamiento intactas y con pernos completos' },
-  { category: 'IV', text: 'Tapas de Inspección bien sujetas y con pernos completos' },
-  { category: 'IV', text: 'Sin fugas de vapor en el sellado' },
-  { category: 'IV', text: 'Sin fugas de vapor en tuberÃ­as' },
-  { category: 'IV', text: 'Sin fugas en tuberÃ­as de transporte' },
-  { category: 'IV', text: 'Sin suciedad excesiva ni inusual en el equipo o Ã¡rea' },
-  { category: 'IV', text: 'Sin problemas en cimientos ni en el montaje' },
-  { category: 'IV', text: 'Sin cables pelados' },
-  { category: 'IV', text: 'Caja de control e interruptores bien instalados y sin componentes rotos' },
-  { category: 'IV', text: 'Sin fugas de aceite' },
-  { category: 'IV', text: 'Sin goteo de grasa por el sello' },
-  { category: 'IV', text: 'Entrada de aire del motor limpia y operativamente limpia' },
-  { category: 'IV', text: 'Sin correas flojas' },
-  { category: 'IV', text: 'Sin correas peladas' },
-  { category: 'IV', text: 'Boquillas de engrase (Zerk) presentes y en buen estado' },
-  { category: 'IV', text: 'No hay filtros obstruidos' },
-  { category: 'IV', text: 'Sin fugas de agua sobre el equipo' },
-  { category: 'IV', text: 'Ãrea alrededor del equipo libre de residuos y sin riesgo' },
-  { category: 'IV', text: 'Sin ruidos inusuales' },
-  { category: 'IV', text: 'Sin temperaturas inusuales' },
-  { category: 'IV', text: 'Sin vibraciones inusuales' },
-  { category: 'IV', text: 'Mirilla de lubricante limpia, legible y en estado normal' },
-  { category: 'IV', text: 'Otros (especificar)' },
-  { category: 'IS', text: 'Sin riesgo por altura o golpes en la cabeza' },
-  { category: 'IS', text: 'Barandillas firmes y en su lugar' },
-  { category: 'IS', text: 'Barandillas instaladas donde corresponde' },
-  { category: 'IS', text: 'IluminaciÃ³n y visibilidad adecuadas' },
-  { category: 'IS', text: 'Superficies sin riesgo potencial de resbalamiento' },
-  { category: 'IS', text: 'Sin riesgo de descarga elÃ©ctrica' },
-  { category: 'IS', text: 'Sin gases ni olores inusuales' },
-  { category: 'IS', text: 'Sin residuos en suspension' },
-  { category: 'IS', text: 'Sin riesgo para la vista' },
-  { category: 'IS', text: 'Sin riesgo de caidas' },
-  { category: 'IS', text: 'Componentes de giro correctamente protegidos' },
-  { category: 'IS', text: 'Sin sobreexposicion de calor' },
-  { category: 'IS', text: 'Sin riesgo de desenganche' },
-  { category: 'IS', text: ' Visibilidad adecuada en el Area' },
-  { category: 'IS', text: 'Sin riesgo de llamas abiertas' },
-  { category: 'IS', text: 'Sin exposicion a chispas o radiacion ultravioleta' },
-  { category: 'IS', text: 'Equipos bien cuidados y almacenados adecuadamente' },
-  { category: 'IS', text: ' Rutas de entrada y salida multiples y despejadas' },
-  { category: 'IS', text: 'Escaleras y puntos de apoyo estables' },
-  { category: 'IS', text: 'Sin riesgo por desplazamiento de material' },
-  { category: 'IS', text: 'Materiales causticos correctamente contenidos y con EPP disponible' },
-  { category: 'IS', text: 'Etiquetado correcto y visible' },
-  { category: 'IS', text: 'Ejes y poleas protegidos y seÃ±alizados' },
-  { category: 'IS', text: 'Puntos de sujecion adecuados' },
-  { category: 'IS', text: 'EPP disponible y en uso cuando corresponde' },
-  { category: 'IS', text: 'Sin fuga terrmica' },
-  { category: 'IS', text: 'Superficies escalonadas visibles y señalizadas' },
-  { category: 'IS', text: 'Superficies de transito regulares y sin orificios' },
-  { category: 'IS', text: ' Sin superficies con temperaturas peligrosas sin proteccion' },
-  { category: 'IS', text: 'Superficies no resbaladías o con tratamiento antideslizante' },
-  { category: 'IS', text: 'Sin agua o aceite estancado' },
-  { category: 'IS', text: 'Sin riesgo de chorro de aire' },
-  { category: 'IS', text: 'Sin riesgo de succion cerca de ventiladores u otros equipos' },
-  { category: 'IS', text: 'Sin bordes afilados expuestos' },
-  { category: 'IS', text: ' Sin ruido elevado o dentro de limites controlados' },
-  { category: 'IS', text: 'Sin descargas repentinas o violentas de aire' },
-  { category: 'IS', text: 'Sin riesgo de explosiones o descargas repentinas' },
-  { category: 'IS', text: 'Advertencia y ajuste correcto de prendas o equipos' },
-  { category: 'IS', text: 'Otros (especificar)' },
-];
 
-// Stub para evitar referencias si quedaran llamadas residuales
-const fetchGemini = async () => {
-  throw new Error('Funciones de IA deshabilitadas');
-};
-
-// (IA removida) Llamadas a Gemini eliminadas
 
 const getCriticalityColor = (crit) => {
     switch (crit) {
@@ -419,7 +377,7 @@ const Dashboard = ({ assets, latestInspections, allInspections, onInspectAssetHi
                     <p className="text-sm font-medium text-gray-400">Activos Totales</p>
                     <div className="flex items-center justify-between mt-1">
                         <span className="text-5xl font-extrabold text-white">{assetStatusSummary.total}</span>
-                        <Target className="w-10 h-10 text-blue-400" />
+                        <TargetIcon className="w-10 h-10 text-blue-400" />
                     </div>
                 </div>
                 <div className="lg:col-span-2 bg-gray-800 p-6 rounded-xl shadow-xl border-t-4 border-teal-500">
@@ -525,8 +483,9 @@ const InspectionForm = ({ asset, onBack, onSave, loading }) => {
     const [isOpen, setIsOpen] = useState(false);
 
     useEffect(() => {
-        if (asset?.checklist) {
-            const initialResults = asset.checklist.map((item, index) => ({
+        const sourceChecklist = Array.isArray(asset?.checklist) && asset.checklist.length >= 10 ? asset.checklist : FULL_IV_IS_CHECKLIST;
+        if (sourceChecklist) {
+            const initialResults = sourceChecklist.map((item, index) => ({
                 index,
                 category: item.category || 'IV',
                 text: normalizeText(item.text),
@@ -707,8 +666,9 @@ const InspectionForm = ({ asset, onBack, onSave, loading }) => {
 };
 
 const App = () => {
-    const [db, setDb] = useState(null);
-    const [userId, setUserId] = useState(null);
+
+    const [user, setUser] = useState(null);
+    const [userRole, setUserRole] = useState(null);
     const [isAuthReady, setIsAuthReady] = useState(false);
     const [assets, setAssets] = useState([]);
     const [latestInspections, setLatestInspections] = useState([]);
@@ -731,42 +691,41 @@ const App = () => {
 
     useEffect(() => {
         setLogLevel('error');
-        if (Object.keys(firebaseConfig).length === 0 || !firebaseConfig.apiKey) {
-            console.error("Firebase config is missing.");
-            setError("Error: ConfiguraciÃ³n de Firebase no encontrada. Revisa tu .env.local");
-            setIsAuthReady(true); // Allow UI to render with error
-            return;
-        }
-        try {
-            const app = initializeApp(firebaseConfig);
-            const authInstance = getAuth(app);
-            const firestore = getFirestore(app);
-            setDb(firestore);
 
-            const unsubscribe = onAuthStateChanged(authInstance, async (user) => {
-                if (user) {
-                    setUserId(user.uid);
+        const unsubscribe = onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                setUser(user);
+                const adminDocRef = doc(db, 'admins', user.uid);
+                const adminDoc = await getDoc(adminDocRef);
+                if (adminDoc.exists()) {
+                    setUserRole('admin');
                 } else {
-                    try {
-                        const userCredential = await signInAnonymously(authInstance);
-                        setUserId(userCredential.user.uid);
-                    } catch (err) {
-                        console.error('AutenticaciÃ³n fallida (Â¿Auth anÃ³nima habilitada?):', err);
-                        setError('No se pudo autenticar. Revisa la configuraciÃ³n de Firebase.');
+                    const userDocRef = doc(db, `/artifacts/${appId}/users`, user.uid);
+                    const userDoc = await getDoc(userDocRef);
+                    if (userDoc.exists()) {
+                        setUserRole(userDoc.data().role || 'technician');
+                    } else {
+                        await setDoc(userDocRef, {
+                            email: user.email,
+                            displayName: user.displayName,
+                            role: 'technician',
+                            createdAt: serverTimestamp(),
+                        });
+                        setUserRole('technician');
                     }
                 }
-                setIsAuthReady(true);
-            });
-            return () => unsubscribe();
-        } catch (e) {
-            console.error("Error during Firebase initialization:", e);
-            setError("Error al inicializar Firebase. Ver consola.");
-        }
+            } else {
+                setUser(null);
+                setUserRole(null);
+            }
+            setIsAuthReady(true);
+        });
+        return () => unsubscribe();
     }, []);
 
     useEffect(() => {
-        if (db && userId) {
-            const assetCollectionPath = `/artifacts/${appId}/users/${userId}/assets`;
+        if (user) {
+            const assetCollectionPath = `/artifacts/${appId}/users/${user.uid}/assets`;
             const assetsColRef = collection(db, assetCollectionPath);
             const q = query(assetsColRef);
             const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -783,11 +742,11 @@ const App = () => {
             });
             return () => unsubscribe();
         }
-    }, [db, userId]);
+    }, [user]);
 
     useEffect(() => {
-        if (db && userId) {
-            const inspectionCollectionPath = `/artifacts/${appId}/users/${userId}/inspections`;
+        if (user) {
+            const inspectionCollectionPath = `/artifacts/${appId}/users/${user.uid}/inspections`;
             const inspectionsColRef = collection(db, inspectionCollectionPath);
             const q = query(inspectionsColRef, orderBy('date', 'desc'), limit(10));
             const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -817,7 +776,7 @@ const App = () => {
                 unsubAll();
             };
         }
-    }, [db, userId]);
+    }, [user]);
 
     const filteredAssets = useMemo(() => {
         if (!searchTerm) return assets;
@@ -829,84 +788,19 @@ const App = () => {
         });
     }, [assets, searchTerm]);
 
-    const handleGenerateChecklist = async () => {
-        if (!newAssetName || !newAssetCriticality) {
-            setError("Necesitas al menos el Nombre y la Criticidad para generar una lista.");
-            return;
-        }
-        setAiLoading(true);
-        setError(null);
-        const systemPrompt = `Eres un ingeniero de confiabilidad experto. Tu tarea es generar un JSON de 4 a 6 puntos de Inspección visual y auditiva de rutina (diaria) para el activo proporcionado. CÃ©ntrate en fallos comunes detectables sin instrumentaciÃ³n avanzada. La respuesta DEBE ser Ãºnicamente un arreglo JSON vÃ¡lido de objetos (sin texto adicional ni bloques markdown). Cada objeto debe tener: {"text": string, "type": "boolean" | "text"}.`;
-        const payload = {
-            contents: [
-                {
-                    role: 'user',
-                    parts: [
-                        { text: `${systemPrompt}
 
-Activo: "${newAssetName}". Criticidad: {asset.criticality}\n                                            . Responde SOLO con el arreglo JSON solicitado.` }
-                    ]
-                }
-            ]
-        };
-        try {
-            const jsonText = await fetchGemini(payload);
-            const suggestedChecklist = JSON.parse(jsonText);
-            sessionStorage.setItem('suggestedChecklist', JSON.stringify(suggestedChecklist));
-            setError("âœ¨ Checklist sugerido por IA listo. Â¡Presiona 'Guardar Activo' para almacenarlo!");
-        } catch (e) {
-            console.error("Error generating checklist:", e);
-            setError(`Error del Generador IA: ${e.message}. Usando plantilla por defecto.`);
-            sessionStorage.removeItem('suggestedChecklist');
-        } finally {
-            setAiLoading(false);
-        }
-    };
-
-    const handleAnalyzeCriticality = async () => {
-        if (!newAssetDescription) {
-            setError("Por favor, introduce una DescripciÃ³n del activo para el anÃ¡lisis de criticidad.");
-            return;
-        }
-        setAiLoading(true);
-        setError(null);
-        const systemPrompt = `Eres un Ingeniero de Confiabilidad. Analiza la siguiente descripciÃ³n de activo. Tu tarea es asignar la criticidad mÃ¡s adecuada (A, B, C o D) y justificar brevemente por quÃ©. La respuesta DEBE ser Ãºnicamente un objeto JSON vÃ¡lido con dos campos: {"criticality": "A"|"B"|"C"|"D", "justification": string}. No incluyas texto adicional ni bloques markdown.`;
-        const payload = {
-            contents: [
-                {
-                    role: 'user',
-                    parts: [
-                        { text: `${systemPrompt}
-
-DescripciÃ³n del Activo: "${newAssetDescription}". Devuelve SOLO el objeto JSON solicitado.` }
-                    ]
-                }
-            ]
-        };
-        try {
-            const jsonText = await fetchGemini(payload);
-            const analysis = JSON.parse(jsonText);
-            setNewAssetCriticality(analysis.criticality);
-            setError(`âœ¨ Criticidad: {asset.criticality}\n                                            . JustificaciÃ³n: ${analysis.justification}`);
-        } catch (e) {
-            console.error("Error analyzing criticality:", e);
-            setError(`Error del Analizador IA: ${e.message}. No se pudo sugerir la criticidad.`);
-        } finally {
-            setAiLoading(false);
-        }
-    };
 
     const handleAddAsset = useCallback(async (e) => {
         e.preventDefault();
-        if (!newAssetName || !db || !userId) {
+        if (!newAssetName || !db || !user) {
             setError("El nombre del activo es obligatorio.");
             return;
         }
         setLoading(true);
         setError(null);
         try {
-            const assetCollectionPath = `/artifacts/${appId}/users/${userId}/assets`;
-            const finalChecklist = DEFAULT_IV_IS_CHECKLIST;
+            const assetCollectionPath = `/artifacts/${appId}/users/${user.uid}/assets`;
+            const finalChecklist = FULL_IV_IS_CHECKLIST;
             await addDoc(collection(db, assetCollectionPath), {
                 name: newAssetName,
                 location: newAssetLocation,
@@ -928,24 +822,24 @@ DescripciÃ³n del Activo: "${newAssetDescription}". Devuelve SOLO el objeto JSO
         } finally {
             setLoading(false);
         }
-    }, [db, userId, newAssetName, newAssetLocation, newAssetTag, newAssetDescription, newAssetCriticality]);
+    }, [db, user, newAssetName, newAssetLocation, newAssetTag, newAssetDescription, newAssetCriticality]);
 
     const handleSaveInspection = useCallback(async (results, notes, overallStatus) => {
-        if (!db || !userId || !selectedAsset) return;
+        if (!user || !selectedAsset) return;
         setLoading(true);
         setError(null);
         try {
-            const inspectionCollectionPath = `/artifacts/${appId}/users/${userId}/inspections`;
+            const inspectionCollectionPath = `/artifacts/${appId}/users/${user.uid}/inspections`;
             await addDoc(collection(db, inspectionCollectionPath), {
                 assetId: selectedAsset.id,
                 assetName: selectedAsset.name,
-                inspectorUserId: userId,
+                inspectorUserId: user.uid,
                 date: serverTimestamp(),
                 results: results,
                 notes: notes,
                 overallStatus: overallStatus,
             });
-            const assetDocRef = doc(db, `/artifacts/${appId}/users/${userId}/assets`, selectedAsset.id);
+            const assetDocRef = doc(db, `/artifacts/${appId}/users/${user.uid}/assets`, selectedAsset.id);
             await updateDoc(assetDocRef, {
                 status: overallStatus,
                 lastInspectionDate: serverTimestamp(),
@@ -959,14 +853,22 @@ DescripciÃ³n del Activo: "${newAssetDescription}". Devuelve SOLO el objeto JSO
             setError("Error al guardar la Inspección: " + e.message);
             setLoading(false);
         }
-    }, [db, userId, selectedAsset]);
+    }, [user, selectedAsset]);
 
-    if (!isAuthReady) {
+    const handleLogout = async () => {
+        await signOut(auth);
+    };
+
+    if (!isAuthReady || (user && !userRole)) {
         return (
             <div className="flex items-center justify-center min-h-screen bg-gray-900 text-white">
-                <Loader className="w-8 h-8 animate-spin mr-2" /> Cargando aplicaciÃ³n...
+                <Loader className="w-8 h-8 animate-spin mr-2" /> Cargando aplicación...
             </div>
         );
+    }
+
+    if (!user) {
+        return <Login />;
     }
 
     return (
@@ -983,16 +885,24 @@ DescripciÃ³n del Activo: "${newAssetDescription}". Devuelve SOLO el objeto JSO
                         >
                             <List className="w-5 h-5 mr-2" /> Activos
                         </button>
+                        {userRole === 'admin' && (
+                            <button
+                                onClick={() => navigateToView('dashboard')}
+                                className={`px-3 py-2 rounded-lg font-semibold transition duration-150 flex items-center ${activeView === 'dashboard' ? 'bg-teal-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+                            >
+                                <BarChart2 className="w-5 h-5 mr-2" /> Dashboard
+                            </button>
+                        )}
                         <button
-                            onClick={() => navigateToView('dashboard')}
-                            className={`px-3 py-2 rounded-lg font-semibold transition duration-150 flex items-center ${activeView === 'dashboard' ? 'bg-teal-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+                            onClick={handleLogout}
+                            className="px-3 py-2 rounded-lg font-semibold transition duration-150 flex items-center bg-red-600 text-white hover:bg-red-500"
                         >
-                            <BarChart2 className="w-5 h-5 mr-2" /> Dashboard
+                            <LogOut className="w-5 h-5 mr-2" /> Salir
                         </button>
                     </nav>
                 </div>
                 <p className="text-sm text-gray-400 mt-1">
-                    {userId && `Usuario: ${userId}`} | Entorno: {appId}
+                    {user && `Usuario: ${user.displayName || user.email}`} | Rol: {userRole} | Entorno: {appId}
                 </p>
             </header>
 
@@ -1005,31 +915,33 @@ DescripciÃ³n del Activo: "${newAssetDescription}". Devuelve SOLO el objeto JSO
 
             {activeView === 'list' && (
                 <>
-                    <div className="bg-gray-800 p-6 rounded-xl shadow-2xl mb-8">
-                        <h2 className="text-2xl font-semibold mb-4 flex items-center text-teal-300">
-                            <Plus className="w-6 h-6 mr-2" /> Crear Nuevo Activo
-                        </h2>
-                        <form onSubmit={handleAddAsset} className="grid md:grid-cols-2 gap-6">
-                            <div className="space-y-4">
-                                <input required value={newAssetName} onChange={(e) => setNewAssetName(e.target.value)} placeholder="Nombre del Activo" className="w-full px-3 py-2 rounded bg-gray-700 border border-gray-600" />
-                                <input value={newAssetLocation} onChange={(e) => setNewAssetLocation(e.target.value)} placeholder="Ubicación" className="w-full px-3 py-2 rounded bg-gray-700 border border-gray-600" />
-                                <textarea value={newAssetDescription} onChange={(e) => setNewAssetDescription(e.target.value)} placeholder="Descripcion del Activo" rows="3" className="w-full px-3 py-2 rounded bg-gray-700 border border-gray-600" />
-                                <input value={newAssetTag} onChange={(e) => setNewAssetTag(e.target.value)} placeholder="Tag del Activo" className="w-full px-3 py-2 rounded bg-gray-700 border border-gray-600" />
-                            </div>
-                            <div className="space-y-4">
-                                <select value={newAssetCriticality} onChange={(e) => setNewAssetCriticality(e.target.value)} className="w-full px-3 py-2 rounded bg-gray-700 border border-gray-600">
-                                    <option value="A">Criticidad A (Muy Alta)</option>
-                                    <option value="B">Criticidad B (Alta)</option>
-                                    <option value="C">Criticidad C (Media)</option>
-                                    <option value="D">Criticidad D (Baja)</option>
-                                </select>
-                                
-                                <button type="submit" disabled={loading} className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800">
-                                    {loading ? <Loader className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />} Guardar Activo
-                                </button>
-                            </div>
-                        </form>
-                    </div>
+                    {userRole === 'admin' && (
+                        <div className="bg-gray-800 p-6 rounded-xl shadow-2xl mb-8">
+                            <h2 className="text-2xl font-semibold mb-4 flex items-center text-teal-300">
+                                <Plus className="w-6 h-6 mr-2" /> Crear Nuevo Activo
+                            </h2>
+                            <form onSubmit={handleAddAsset} className="grid md:grid-cols-2 gap-6">
+                                <div className="space-y-4">
+                                    <input required value={newAssetName} onChange={(e) => setNewAssetName(e.target.value)} placeholder="Nombre del Activo" className="w-full px-3 py-2 rounded bg-gray-700 border border-gray-600" />
+                                    <input value={newAssetLocation} onChange={(e) => setNewAssetLocation(e.target.value)} placeholder="Ubicación" className="w-full px-3 py-2 rounded bg-gray-700 border border-gray-600" />
+                                    <textarea value={newAssetDescription} onChange={(e) => setNewAssetDescription(e.target.value)} placeholder="Descripcion del Activo" rows="3" className="w-full px-3 py-2 rounded bg-gray-700 border border-gray-600" />
+                                    <input value={newAssetTag} onChange={(e) => setNewAssetTag(e.target.value)} placeholder="Tag del Activo" className="w-full px-3 py-2 rounded bg-gray-700 border border-gray-600" />
+                                </div>
+                                <div className="space-y-4">
+                                    <select value={newAssetCriticality} onChange={(e) => setNewAssetCriticality(e.target.value)} className="w-full px-3 py-2 rounded bg-gray-700 border border-gray-600">
+                                        <option value="A">Criticidad A (Muy Alta)</option>
+                                        <option value="B">Criticidad B (Alta)</option>
+                                        <option value="C">Criticidad C (Media)</option>
+                                        <option value="D">Criticidad D (Baja)</option>
+                                    </select>
+                                    
+                                    <button type="submit" disabled={loading} className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800">
+                                        {loading ? <Loader className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />} Guardar Activo
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    )}
 
                     <div className="bg-gray-800 p-6 rounded-xl shadow-2xl">
                         <div className="flex justify-between items-center mb-4">
@@ -1070,7 +982,7 @@ DescripciÃ³n del Activo: "${newAssetDescription}". Devuelve SOLO el objeto JSO
                 />
             )}
 
-            {activeView === 'dashboard' && (
+            {activeView === 'dashboard' && userRole === 'admin' && (
                 <Dashboard
                     assets={assets}
                     latestInspections={latestInspections}
@@ -1079,19 +991,19 @@ DescripciÃ³n del Activo: "${newAssetDescription}". Devuelve SOLO el objeto JSO
                 />
             )}
 
-            {activeView === 'assetHistory' && selectedAsset && db && userId && appId && (
+            {activeView === 'assetHistory' && selectedAsset && db && user && appId && (
                 <AssetHistory
                     db={db}
-                    userId={userId}
+                    userId={user.uid}
                     appId={appId}
                     asset={selectedAsset}
-                    onBack={() => navigateToView('dashboard')}
+                    onBack={() => navigateToView(userRole === 'admin' ? 'dashboard' : 'list')}
                     onInspect={(asset) => navigateToView('inspection', asset)}
                 />
             )}
 
             <footer className="mt-8 pt-4 border-t border-gray-700 text-center text-xs text-gray-500">
-                AplicaciÃ³n PIA - Impulsada por React y Firestore
+                Aplicación PIA - Impulsada por React y Firestore
             </footer>
         </div>
     );
