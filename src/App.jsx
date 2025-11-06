@@ -868,7 +868,7 @@ const App = () => {
         await signOut(auth);
     };
 
-    if (!isAuthReady || (user && !userRole)) {
+    if (!isAuthReady) {
         return (
             <div className="flex items-center justify-center min-h-screen bg-gray-900 text-white">
                 <Loader className="w-8 h-8 animate-spin mr-2" /> Cargando aplicación...
@@ -1018,6 +1018,7 @@ const App = () => {
 };
 
 export default App;
+
 
 
 
