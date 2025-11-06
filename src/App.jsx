@@ -327,15 +327,18 @@ const AssetEvolutionChart = ({ data }) => {
 
 const Dashboard = ({ assets, latestInspections, allInspections, onInspectAssetHistory }) => {
     const assetStatusSummary = useMemo(() => {
-        const summary = { 'OK': 0, 'ALERT': 0, 'Uninspected': 0 };
+        // Soporta estados 'A' | 'B' | 'C' | 'X' y 'Uninspected'
+        const summary = { A: 0, B: 0, C: 0, X: 0, Uninspected: 0 };
         assets.forEach(asset => {
-            summary[asset.status] = (summary[asset.status] || 0) + 1;
+            const s = asset.status || 'Uninspected';
+            if (summary[s] != null) summary[s] += 1; else summary['Uninspected'] += 1;
         });
         const total = assets.length;
         const data = [
-            { name: 'OK', value: summary['OK'], color: '#10B981' },
-            { name: 'ALERTA', value: summary['ALERT'], color: '#EF4444' },
-            { name: 'No Insp.', value: summary['Uninspected'], color: '#F59E0B' },
+            { name: 'A', value: summary.A, color: '#10B981' },      // verde
+            { name: 'B', value: summary.B, color: '#84CC16' },      // lima
+            { name: 'C', value: summary.C, color: '#EF4444' },      // rojo
+            { name: 'No Insp.', value: summary.Uninspected, color: '#F59E0B' },
         ].filter(item => item.value > 0);
         return { data, total };
     }, [assets]);
@@ -358,11 +361,10 @@ const Dashboard = ({ assets, latestInspections, allInspections, onInspectAssetHi
                 if (inspDate >= twelveMonthsAgo) {
                     const monthIndex = (inspDate.getFullYear() - twelveMonthsAgo.getFullYear()) * 12 + (inspDate.getMonth() - twelveMonthsAgo.getMonth());
                     if (monthIndex >= 0 && monthIndex < 12) {
-                        if (insp.overallStatus === 'OK') {
-                            monthsData[monthIndex].valueOK += 1;
-                        } else if (insp.overallStatus === 'ALERT') {
-                            monthsData[monthIndex].valueALERT += 1;
-                        }
+                        const s = insp.overallStatus;
+                        // Tratar A/B como OK; C y X como ALERT
+                        if (s === 'A' || s === 'B' || s === 'OK') monthsData[monthIndex].valueOK += 1;
+                        else if (s === 'C' || s === 'X' || s === 'ALERT') monthsData[monthIndex].valueALERT += 1;
                     }
                 }
             });
