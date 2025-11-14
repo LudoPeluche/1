@@ -1,82 +1,97 @@
-# Reglas de Firestore — borrador
+# Reglas de Firestore — Versión Final (Single-Tenant)
 
-Estas reglas contemplan dos escenarios: Opción A (por `appId`) y Opción B (multi‑tenant).
+Este archivo contiene las reglas de seguridad de Firestore actualizadas para el modelo de aplicación de **empresa única (single-tenant)** con roles de `admin` y `tecnico`.
 
-Nota: reemplazar `$(db)` por `$(database)` si usas la sintaxis nueva en el editor.
+Estas reglas reemplazan las versiones anteriores de "Opción A" y "Opción B".
 
-## Opción A — Copia por empresa (appId)
+## Reglas para Desplegar
 ```
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // --- Funciones de Ayuda ---
     function isAdmin() {
+      // Un usuario es admin si existe en la colección global 'admins'.
+      // Esto es útil para el bootstrapping inicial de administradores.
       return exists(/databases/$(database)/documents/admins/$(request.auth.uid));
     }
-    function userDoc(appId) {
-      return get(/databases/$(database)/documents/artifacts/$(appId)/users/$(request.auth.uid));
-    }
-    function role(appId) {
-      return userDoc(appId).data.role;
-    }
 
-    // Perfiles
-    match /artifacts/{appId}/users/{uid} {
-      allow read: if request.auth != null && (isAdmin() || request.auth.uid == uid);
-      allow write: if request.auth != null && (isAdmin() || (request.auth.uid == uid));
-    }
-
-    // Activos e inspecciones propios del usuario
-    match /artifacts/{appId}/users/{uid}/assets/{assetId} {
-      allow read: if request.auth != null && (isAdmin() || request.auth.uid == uid);
-      allow write: if request.auth != null && (isAdmin() || role(appId) in ['admin']);
-    }
-    match /artifacts/{appId}/users/{uid}/inspections/{inspectionId} {
-      allow read: if request.auth != null && (isAdmin() || request.auth.uid == uid);
-      allow write: if request.auth != null && (isAdmin() || role(appId) in ['admin','technician']);
-    }
-  }
-}
-```
-
-## Opción B — Multi‑tenant (recomendada)
-```
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    function isSuperAdmin() {
-      return exists(/databases/$(database)/documents/superAdmins/$(request.auth.uid));
-    }
-    function isMember(tenantId) {
-      return exists(/databases/$(database)/documents/tenants/$(tenantId)/members/$(request.auth.uid));
-    }
-    function member(tenantId) {
-      return get(/databases/$(database)/documents/tenants/$(tenantId)/members/$(request.auth.uid));
-    }
-    function hasRole(tenantId, r) {
-      return isMember(tenantId) && member(tenantId).data.role == r;
-    }
-
-    match /tenants/{tenantId} {
-      allow read: if isSuperAdmin() || isMember(tenantId);
-      allow write: if false; // evita escribir directo en el doc del tenant
-
-      match /members/{uid} {
-        allow read: if isSuperAdmin() || (isMember(tenantId) && request.auth.uid == uid);
-        allow write: if isSuperAdmin() || hasRole(tenantId, 'admin');
+    function getUserRole(appId) {
+      // Obtiene el rol del usuario desde su documento en 'artifacts/{appId}/users/{uid}'.
+      let userDoc = get(/databases/$(database)/documents/artifacts/$(appId)/users/$(request.auth.uid));
+      // Si el documento no existe o no tiene rol, no se le concede ningún rol.
+      if (!exists(userDoc.path)) {
+        return '';
       }
+      return userDoc.data.role;
+    }
+
+    function isAppAdmin(appId) {
+      // Un usuario es administrador de la aplicación si es un admin global o tiene el rol 'admin'.
+      return isAdmin() || getUserRole(appId) == 'admin';
+    }
+
+    function isSignedIn() {
+      // Verifica que el usuario haya iniciado sesión.
+      return request.auth != null;
+    }
+
+    function isNotUnavailable(appId) {
+      // Verifica que el rol del usuario no sea 'no disponible'.
+      return getUserRole(appId) != 'no disponible';
+    }
+
+    // --- Reglas por Colección ---
+
+    // La colección 'admins' es de solo lectura para los clientes.
+    // Los administradores iniciales deben gestionarse directamente desde la consola de Firebase.
+    match /admins/{uid} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    // Contenedor principal de datos de la aplicación.
+    match /artifacts/{appId} {
+
+      // Perfiles de usuario y sus roles.
+      match /users/{uid} {
+        // Solo los usuarios que no están deshabilitados pueden leer la lista de usuarios.
+        allow read: if isSignedIn() && isNotUnavailable(appId);
+        // Solo los administradores de la aplicación pueden crear, actualizar o eliminar perfiles de usuario.
+        // Esto les permite gestionar los roles.
+        allow write: if isAppAdmin(appId);
+      }
+
+      // Activos de la empresa.
       match /assets/{assetId} {
-        allow read: if isSuperAdmin() || isMember(tenantId);
-        allow write: if isSuperAdmin() || hasRole(tenantId, 'admin');
+        // Solo los usuarios que no están deshabilitados pueden leer los activos.
+        allow read: if isSignedIn() && isNotUnavailable(appId);
+        // Solo los administradores pueden crear, actualizar o eliminar activos.
+        allow write: if isAppAdmin(appId);
       }
+
+      // Inspecciones de los activos.
       match /inspections/{inspectionId} {
-        allow read: if isSuperAdmin() || isMember(tenantId);
-        allow write: if isSuperAdmin() || hasRole(tenantId, 'admin') || hasRole(tenantId, 'technician');
+        // Solo los usuarios que no están deshabilitados pueden leer las inspecciones.
+        allow read: if isSignedIn() && isNotUnavailable(appId);
+        // Solo los usuarios que no están deshabilitados pueden crear una nueva inspección.
+        allow create: if isSignedIn() && isNotUnavailable(appId);
+        // Solo los administradores pueden modificar o eliminar una inspección existente.
+        allow update, delete: if isAppAdmin(appId);
       }
     }
   }
 }
 ```
 
-## Índices sugeridos
-- `tenants/*/inspections` ordenar por `date desc`.
-- `artifacts/*/users/*/inspections` ordenar por `date desc`.
+## Índices Requeridos
+
+Para que las consultas de la aplicación funcionen correctamente, asegúrate de que los siguientes índices estén creados en tu base de datos de Firestore:
+
+1.  **Colección:** `inspections` (dentro de `artifacts/{appId}`)
+    *   **Campo:** `date`
+    *   **Orden:** Descendente
+2.  **Colección:** `assets` (dentro de `artifacts/{appId}`)
+    *   **Campo:** `createdAt`
+    *   **Orden:** Descendente
