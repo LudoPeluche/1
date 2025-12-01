@@ -1,0 +1,67 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // --- Funciones de Ayuda ---
+    function isAdmin() {
+      // Un usuario es admin si existe en la colección global 'admins'.
+      return exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    function getUserRole(appId) {
+      // Obtiene el rol del usuario desde su documento.
+      // Usa un ternario porque las reglas no soportan 'if/else' en funciones.
+      return exists(/databases/$(database)/documents/artifacts/$(appId)/users/$(request.auth.uid))
+        ? get(/databases/$(database)/documents/artifacts/$(appId)/users/$(request.auth.uid)).data.role
+        : '';
+    }
+
+    function isAppAdmin(appId) {
+      // Es admin de la app si es admin global o tiene el rol 'admin'.
+      return isAdmin() || getUserRole(appId) == 'admin';
+    }
+
+    function isSignedIn() {
+      // Verifica que el usuario haya iniciado sesión.
+      return request.auth != null;
+    }
+
+    // --- Reglas por Colección ---
+
+    // La colección 'admins' es de solo lectura para los clientes.
+    match /admins/{uid} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    // Contenedor principal de datos de la aplicación.
+    match /artifacts/{appId} {
+
+      // Perfiles de usuario y sus roles.
+      match /users/{uid} {
+        // Cualquier usuario autenticado puede leer la lista de usuarios.
+        allow read: if isSignedIn();
+        // Solo los administradores pueden crear, actualizar o eliminar perfiles.
+        allow write: if isAppAdmin(appId);
+      }
+
+      // Activos de la empresa.
+      match /assets/{assetId} {
+        // Cualquier usuario autenticado puede leer los activos.
+        allow read: if isSignedIn();
+        // Solo los administradores pueden crear, actualizar o borrar activos.
+        allow write: if isAppAdmin(appId);
+      }
+
+      // Inspecciones de los activos.
+      match /inspections/{inspectionId} {
+        // Cualquier usuario autenticado puede leer las inspecciones.
+        allow read: if isSignedIn();
+        // Cualquier usuario autenticado (admin o tecnico) puede crear una nueva inspección.
+        allow create: if isSignedIn();
+        // Solo los administradores pueden modificar o eliminar una inspección existente.
+        allow update, delete: if isAppAdmin(appId);
+      }
+    }
+  }
+}
