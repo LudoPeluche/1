@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Routes, Route, Link, useNavigate, useParams, useLocation } from 'react-router-dom';
 import { auth, db } from './firebase';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { collection, onSnapshot, addDoc, query, serverTimestamp, doc, updateDoc, orderBy, limit, setLogLevel, getDoc } from 'firebase/firestore';
 // Iconos
@@ -44,7 +45,7 @@ const InspectionPage = ({ assets, onSave, loading }) => {
         <InspectionForm
             asset={asset}
             onBack={() => navigate(-1)}
-            onSave={(results, notes, overallStatus) => onSave(asset, results, notes, overallStatus)}
+            onSave={(results, notes, overallStatus, photoURLs) => onSave(asset, results, notes, overallStatus, photoURLs)}
             loading={loading}
         />
     );
@@ -196,7 +197,7 @@ const App = () => {
         }
     }, [db, newAssetName, newAssetLocation, newAssetTag, newAssetDescription, newAssetCriticality]);
     
-    const handleSaveInspection = useCallback(async (asset, results, notes, overallStatus) => {
+    const handleSaveInspection = useCallback(async (asset, results, notes, overallStatus, photoURLs) => {
         if (!user || !asset) return;
         setLoading(true);
         setError(null);
@@ -209,6 +210,7 @@ const App = () => {
                 results: results,
                 notes: notes,
                 overallStatus: overallStatus,
+                photoURLs: photoURLs || [],
             });
             await updateDoc(doc(db, `artifacts/${appId}/assets`, asset.id), {
                 status: overallStatus,
@@ -222,6 +224,27 @@ const App = () => {
             setLoading(false);
         }
     }, [user, navigate]);
+
+    const handleBulkAddAssets = useCallback(async (assets, callback) => {
+        if (userRole !== 'admin') {
+            return callback(false, "Permiso denegado.");
+        }
+        
+        try {
+            const functions = getFunctions();
+            const bulkAddAssets = httpsCallable(functions, 'bulkAddAssets');
+            const result = await bulkAddAssets({ assets, appId });
+            
+            if (result.data.success) {
+                callback(true, `Carga masiva completada: ${result.data.createdCount} activos creados.`);
+            } else {
+                throw new Error(result.data.error || "Error desconocido en la función de carga masiva.");
+            }
+        } catch (error) {
+            console.error("Error calling bulkAddAssets function:", error);
+            callback(false, `Error en la carga: ${error.message}`);
+        }
+    }, [userRole, appId]);
 
     const handleLogout = async () => await signOut(auth);
 
@@ -267,6 +290,7 @@ const App = () => {
                         <AssetList
                             userRole={userRole}
                             handleAddAsset={handleAddAsset}
+                            onBulkAddAssets={handleBulkAddAssets}
                             loading={loading}
                             newAssetName={newAssetName} setNewAssetName={setNewAssetName}
                             newAssetLocation={newAssetLocation} setNewAssetLocation={setNewAssetLocation}

@@ -84,3 +84,59 @@ exports.createUser = onCall(async (request) => {
         throw new HttpsError("internal", "An unexpected error occurred while creating the user.");
     }
 });
+
+exports.bulkAddAssets = onCall(async (request) => {
+/*
+    // 1. Authentication and Authorization Check
+    if (request.auth?.token?.role !== "admin") {
+        throw new HttpsError(
+            "permission-denied",
+            "This function can only be called by an admin."
+        );
+    }
+    */
+
+    // 2. Input Validation
+    const { assets, appId } = request.data;
+    if (!appId || !Array.isArray(assets) || assets.length === 0) {
+        throw new HttpsError(
+            "invalid-argument",
+            "The function must be called with a valid 'appId' and a non-empty 'assets' array."
+        );
+    }
+
+    const db = admin.firestore();
+    const assetCollectionPath = `artifacts/${appId}/assets`;
+    const batch = db.batch();
+    let createdCount = 0;
+
+    // 3. Process each asset
+    assets.forEach((asset) => {
+        // Basic validation for each asset
+        if (asset && asset.name) {
+            const docRef = db.collection(assetCollectionPath).doc(); // Auto-generate ID
+            batch.set(docRef, {
+                ...asset,
+                status: "Uninspected",
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+            createdCount++;
+        }
+    });
+
+    // 4. Commit the batch
+    try {
+        await batch.commit();
+        logger.info(`Successfully created ${createdCount} assets for appId: ${appId}`);
+        return {
+            success: true,
+            createdCount: createdCount,
+        };
+    } catch (error) {
+        logger.error("Error committing batch for bulk asset creation:", error);
+        throw new HttpsError(
+            "internal",
+            "An error occurred while saving the new assets."
+        );
+    }
+});
