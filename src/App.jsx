@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Routes, Route, Link, useNavigate, useParams, useLocation } from 'react-router-dom';
-import { auth, db } from './firebase';
+import { db } from './firebase'; // auth imported but not used directly anymore
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { collection, onSnapshot, addDoc, query, serverTimestamp, doc, updateDoc, orderBy, limit, setLogLevel, getDoc } from 'firebase/firestore';
 // Iconos
 import { Loader, List, LogOut, BarChart2, AlertTriangle, Users } from 'lucide-react';
@@ -13,14 +12,14 @@ import AssetList from './components/AssetList';
 import Dashboard from './components/Dashboard';
 import AssetHistory from './components/AssetHistory';
 import InspectionForm from './components/InspectionForm';
-
-const appId = import.meta.env.VITE_APP_ID || 'default-app-id';
+import { APP_ID } from './config';
+import { useAuth } from './context/AuthContext';
 
 const AssetHistoryPage = ({ assets, db, appId, userRole }) => {
     const navigate = useNavigate();
     const { assetId } = useParams();
     const asset = assets.find(a => a.id === assetId);
-    
+
     if (!asset) return <div className="flex items-center justify-center p-8"><Loader className="w-8 h-8 animate-spin mr-2" /> Cargando activo...</div>;
 
     return (
@@ -37,7 +36,30 @@ const AssetHistoryPage = ({ assets, db, appId, userRole }) => {
 const InspectionPage = ({ assets, onSave, loading }) => {
     const navigate = useNavigate();
     const { assetId } = useParams();
-    const asset = assets.find(a => a.id === assetId);
+    const [fetchedAsset, setFetchedAsset] = useState(null);
+    const existingAsset = assets.find(a => a.id === assetId);
+
+    const asset = existingAsset || fetchedAsset;
+
+    useEffect(() => {
+        if (!existingAsset && assetId) {
+            const fetchAsset = async () => {
+                try {
+                    // We need db and appId here. Ideally they should be props or imported, 
+                    // but since they are imported in the module scope, we can use them.
+                    // Wait, db is imported. APP_ID is imported.
+                    const docRef = doc(db, `artifacts/${APP_ID}/assets`, assetId);
+                    const docSnap = await getDoc(docRef);
+                    if (docSnap.exists()) {
+                        setFetchedAsset({ id: docSnap.id, ...docSnap.data() });
+                    }
+                } catch (error) {
+                    console.error("Error fetching inspection asset:", error);
+                }
+            };
+            fetchAsset();
+        }
+    }, [existingAsset, assetId]);
 
     if (!asset) return <div className="flex items-center justify-center p-8"><Loader className="w-8 h-8 animate-spin mr-2" /> Cargando activo...</div>
 
@@ -52,9 +74,8 @@ const InspectionPage = ({ assets, onSave, loading }) => {
 };
 
 const App = () => {
-    const [user, setUser] = useState(null);
-    const [userRole, setUserRole] = useState(null);
-    const [isAuthReady, setIsAuthReady] = useState(false);
+    const { user, userRole, logout } = useAuth();
+
     const [assets, setAssets] = useState([]);
     const [latestInspections, setLatestInspections] = useState([]);
     const [allInspections, setAllInspections] = useState([]);
@@ -63,7 +84,7 @@ const App = () => {
     const [newAssetTag, setNewAssetTag] = useState('');
     const [newAssetDescription, setNewAssetDescription] = useState('');
     const [newAssetCriticality, setNewAssetCriticality] = useState('D');
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(false); // Local loading for actions
     const [error, setError] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [users, setUsers] = useState([]);
@@ -72,47 +93,16 @@ const App = () => {
     const navigate = useNavigate();
     const location = useLocation();
 
-    useEffect(() => {
-        if (!user) return;
-        const userDocRef = doc(db, `artifacts/${appId}/users`, user.uid);
-        const unsubscribe = onSnapshot(userDocRef, (doc) => {
-            if (doc.exists()) {
-                const newRole = doc.data().role || 'tecnico';
-                if (userRole !== newRole) setUserRole(newRole);
-            } else {
-                signOut(auth);
-            }
-        });
-        return () => unsubscribe();
-    }, [user, userRole]);
+    // Remove old auth effects (lines 75-110 in original)
 
     useEffect(() => {
-        setLogLevel('error');
-        const unsubscribe = onAuthStateChanged(auth, async (user) => {
-            if (user) {
-                const userDocRef = doc(db, `artifacts/${appId}/users`, user.uid);
-                const userDoc = await getDoc(userDocRef);
-                if (userDoc.exists()) {
-                    setUser(user);
-                    setUserRole(userDoc.data().role || 'tecnico');
-                } else {
-                    console.warn(`Unauthorized login: ${user.email}`);
-                    setError("Acceso denegado.");
-                    await signOut(auth);
-                }
-            } else {
-                setUser(null);
-                setUserRole(null);
-            }
-            setIsAuthReady(true);
-        });
-        return () => unsubscribe();
+        setLogLevel('error'); // Keep this or move to main
     }, []);
 
     useEffect(() => {
         if (userRole) {
-            const assetCollectionPath = `artifacts/${appId}/assets`;
-            const q = query(collection(db, assetCollectionPath), orderBy('createdAt', 'desc'));
+            const assetCollectionPath = `artifacts/${APP_ID}/assets`;
+            const q = query(collection(db, assetCollectionPath), orderBy('createdAt', 'desc'), limit(100));
             const unsubscribe = onSnapshot(q, (snapshot) => {
                 const assetsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 setAssets(assetsData);
@@ -124,7 +114,7 @@ const App = () => {
 
     useEffect(() => {
         if (user) {
-            const inspectionsColRef = collection(db, `artifacts/${appId}/inspections`);
+            const inspectionsColRef = collection(db, `artifacts/${APP_ID}/inspections`);
             const q = query(inspectionsColRef, orderBy('date', 'desc'), limit(10));
             const unsubscribe = onSnapshot(q, (snapshot) => {
                 const inspectionsData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id, date: doc.data().date?.toDate() }));
@@ -138,10 +128,10 @@ const App = () => {
             return () => { unsubscribe(); unsubAll(); };
         }
     }, [user]);
-    
+
     useEffect(() => {
         if (userRole === 'admin') {
-            const usersColRef = collection(db, `artifacts/${appId}/users`);
+            const usersColRef = collection(db, `artifacts/${APP_ID}/users`);
             const unsubscribe = onSnapshot(usersColRef, (snapshot) => {
                 setUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
             });
@@ -158,7 +148,7 @@ const App = () => {
     const handleRoleChange = async (uid, newRole) => {
         if (userRole !== 'admin') return;
         try {
-            await updateDoc(doc(db, `artifacts/${appId}/users`, uid), { role: newRole });
+            await updateDoc(doc(db, `artifacts/${APP_ID}/users`, uid), { role: newRole });
         } catch (error) {
             setError("Error al actualizar el rol.");
         }
@@ -176,7 +166,7 @@ const App = () => {
         setLoading(true);
         setError(null);
         try {
-            await addDoc(collection(db, `artifacts/${appId}/assets`), {
+            await addDoc(collection(db, `artifacts/${APP_ID}/assets`), {
                 name: newAssetName,
                 location: newAssetLocation,
                 tag: newAssetTag,
@@ -195,14 +185,14 @@ const App = () => {
         } finally {
             setLoading(false);
         }
-    }, [db, newAssetName, newAssetLocation, newAssetTag, newAssetDescription, newAssetCriticality]);
-    
+    }, [newAssetName, newAssetLocation, newAssetTag, newAssetDescription, newAssetCriticality]);
+
     const handleSaveInspection = useCallback(async (asset, results, notes, overallStatus, photoURLs) => {
         if (!user || !asset) return;
         setLoading(true);
         setError(null);
         try {
-            await addDoc(collection(db, `artifacts/${appId}/inspections`), {
+            await addDoc(collection(db, `artifacts/${APP_ID}/inspections`), {
                 assetId: asset.id,
                 assetName: asset.name,
                 inspectorUserId: user.uid,
@@ -212,7 +202,7 @@ const App = () => {
                 overallStatus: overallStatus,
                 photoURLs: photoURLs || [],
             });
-            await updateDoc(doc(db, `artifacts/${appId}/assets`, asset.id), {
+            await updateDoc(doc(db, `artifacts/${APP_ID}/assets`, asset.id), {
                 status: overallStatus,
                 lastInspectionDate: serverTimestamp(),
             });
@@ -229,12 +219,12 @@ const App = () => {
         if (userRole !== 'admin') {
             return callback(false, "Permiso denegado.");
         }
-        
+
         try {
             const functions = getFunctions();
             const bulkAddAssets = httpsCallable(functions, 'bulkAddAssets');
-            const result = await bulkAddAssets({ assets, appId });
-            
+            const result = await bulkAddAssets({ assets, appId: APP_ID });
+
             if (result.data.success) {
                 callback(true, `Carga masiva completada: ${result.data.createdCount} activos creados.`);
             } else {
@@ -244,13 +234,11 @@ const App = () => {
             console.error("Error calling bulkAddAssets function:", error);
             callback(false, `Error en la carga: ${error.message}`);
         }
-    }, [userRole, appId]);
+    }, [userRole]);
 
-    const handleLogout = async () => await signOut(auth);
+    // Handled by Context now
+    // if (!isAuthReady) ...
 
-    if (!isAuthReady) {
-        return <div className="flex items-center justify-center min-h-screen bg-gray-900 text-white"><Loader className="w-8 h-8 animate-spin mr-2" /> Cargando...</div>;
-    }
     if (!user) {
         return <Login />;
     }
@@ -276,10 +264,10 @@ const App = () => {
                         <Link to="/" className={getLinkClass('/')}><List className="w-5 h-5 mr-2" /> Activos</Link>
                         {userRole === 'admin' && <Link to="/dashboard" className={getLinkClass('/dashboard')}><BarChart2 className="w-5 h-5 mr-2" /> Dashboard</Link>}
                         {userRole === 'admin' && <Link to="/users" className={getLinkClass('/users')}><Users className="w-5 h-5 mr-2" /> Usuarios</Link>}
-                        <button onClick={handleLogout} className="px-3 py-2 rounded-lg font-semibold transition duration-150 flex items-center bg-red-600 text-white hover:bg-red-500"><LogOut className="w-5 h-5 mr-2" /> Salir</button>
+                        <button onClick={logout} className="px-3 py-2 rounded-lg font-semibold transition duration-150 flex items-center bg-red-600 text-white hover:bg-red-500"><LogOut className="w-5 h-5 mr-2" /> Salir</button>
                     </nav>
                 </div>
-                <p className="text-sm text-gray-400 mt-1">{`Usuario: ${user.displayName || user.email}`} | Rol: {userRole} | Entorno: {appId}</p>
+                <p className="text-sm text-gray-400 mt-1">{`Usuario: ${user.displayName || user.email}`} | Rol: {userRole} | Entorno: {APP_ID}</p>
             </header>
 
             {error && <div className="p-3 mb-4 bg-red-800 rounded-lg flex items-center shadow-lg"><AlertTriangle className="w-5 h-5 mr-2" /><span>{error}</span></div>}
@@ -314,23 +302,23 @@ const App = () => {
                     } />}
 
                     {userRole === 'admin' && <Route path="/users" element={
-                        <UserManagement 
-                            users={users} 
+                        <UserManagement
+                            users={users}
                             onRoleChange={handleRoleChange}
                             onUserCreated={handleUserCreated}
                         />
                     } />}
 
                     <Route path="/asset/:assetId" element={
-                        <AssetHistoryPage assets={assets} db={db} appId={appId} userRole={userRole} />
+                        <AssetHistoryPage assets={assets} db={db} appId={APP_ID} userRole={userRole} />
                     } />
-                    
+
                     <Route path="/asset/:assetId/inspect" element={
                         <InspectionPage assets={assets} onSave={handleSaveInspection} loading={loading} />
                     } />
                 </Routes>
             </main>
-            
+
             <footer className="mt-8 pt-4 border-t border-gray-700 text-center text-xs text-gray-500">
                 Aplicación PIA - Impulsada por React y Firestore
             </footer>

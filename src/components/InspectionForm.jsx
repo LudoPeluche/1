@@ -1,33 +1,34 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Loader, ArrowLeft, CheckCircle } from 'lucide-react';
+import { Loader, ArrowLeft, CheckCircle, X } from 'lucide-react';
+import StorageUploader from './StorageUploader';
 
 // Full IV/IS checklist (fallback y para nuevos activos)
 const FULL_IV_IS_CHECKLIST = [
   // IV — Inspecciones Visuales / Operativas
   { category: 'IV', text: 'Nivel de aceite adecuado' },
-  { category: 'IV', text: 'Fugas de aceite o lubricante' },
-  { category: 'IV', text: 'Fugas de agua o refrigerante' },
-  { category: 'IV', text: 'Vibraciones anormales (tacto/oido)' },
-  { category: 'IV', text: 'Ruidos anormales o golpeteos' },
-  { category: 'IV', text: 'Temperatura de carcasa elevada' },
-  { category: 'IV', text: 'Tornilleria/abrazaderas flojas' },
-  { category: 'IV', text: 'Corrosion u oxidacion visible' },
-  { category: 'IV', text: 'Alineacion de poleas/acoples' },
-  { category: 'IV', text: 'Estado de correas (tension y desgaste)' },
-  { category: 'IV', text: 'Estado de acoples y chavetas' },
+  { category: 'IV', text: 'Sin Fugas de aceite o lubricante' },
+  { category: 'IV', text: 'Sin Fugas de agua o refrigerante' },
+  { category: 'IV', text: 'Vibraciones normales (tacto/oido)' },
+  { category: 'IV', text: 'Sin Ruidos anormales o golpeteos' },
+  { category: 'IV', text: 'Temperatura de carcasa normal' },
+  { category: 'IV', text: 'Tornilleria/abrazaderas ajustadas' },
+  { category: 'IV', text: 'Sin Corrosion u oxidacion visible' },
+  { category: 'IV', text: 'Estan Alineadas las poleas/acoples' },
+  { category: 'IV', text: 'Estado de correas sin desgaste y bien tensionadas' },
+  { category: 'IV', text: 'Estado de acoples y chavetas en buenas condiciones' },
   { category: 'IV', text: 'Guardas mecanicas en buen estado' },
   { category: 'IV', text: 'Cables electricos sin danos' },
   { category: 'IV', text: 'Conexiones electricas firmes' },
-  { category: 'IV', text: 'Suciedad/polvo acumulado en el equipo' },
+  { category: 'IV', text: 'Sin Suciedad/polvo acumulado en el equipo' },
   { category: 'IV', text: 'Rejillas/ventilacion sin obstrucciones' },
   { category: 'IV', text: 'Base/soportes sin fisuras ni juego' },
   { category: 'IV', text: 'Sellos y empaques sin fugas' },
   { category: 'IV', text: 'Filtros limpios/ciclo de limpieza vigente' },
   { category: 'IV', text: 'Manometros/indicadores en rangos normales' },
   { category: 'IV', text: 'Puntos calientes visibles (inspeccion visual)' },
-  { category: 'IV', text: 'Holguras o desalineaciones visibles' },
-  { category: 'IV', text: 'Presencia de condensacion/goteos' },
-  { category: 'IV', text: 'Necesidad de relubricacion inmediata' },
+  { category: 'IV', text: 'Sin Holguras o desalineaciones visibles' },
+  { category: 'IV', text: 'Sin Presencia de condensacion/goteos' },
+  { category: 'IV', text: 'Sin Necesidad de relubricacion inmediata' },
   { category: 'IV', text: 'Etiquetado/identificacion legible' },
 
   // IS — Inspecciones de Seguridad
@@ -89,6 +90,7 @@ const InspectionForm = ({ asset, onBack, onSave, loading }) => {
     const [overall, setOverall] = useState('B');
     const [ivOpen, setIvOpen] = useState(false);
     const [isOpen, setIsOpen] = useState(false);
+    const [photoURLs, setPhotoURLs] = useState([]);
 
     useEffect(() => {
         const sourceChecklist = Array.isArray(asset?.checklist) && asset.checklist.length >= 10 ? asset.checklist : FULL_IV_IS_CHECKLIST;
@@ -98,7 +100,6 @@ const InspectionForm = ({ asset, onBack, onSave, loading }) => {
                 category: item.category || 'IV',
                 text: normalizeText(item.text),
                 cumple: false, // inicia sin marcar
-                comment: '',
             }));
             setResults(initialResults);
         }
@@ -108,8 +109,12 @@ const InspectionForm = ({ asset, onBack, onSave, loading }) => {
         setResults(prev => prev.map(r => r.index === idx ? { ...r, cumple: !r.cumple } : r));
     };
 
-    const setComment = (idx, value) => {
-        setResults(prev => prev.map(r => r.index === idx ? { ...r, comment: value } : r));
+    const handleUploadComplete = (downloadURL) => {
+        setPhotoURLs(prev => [...prev, downloadURL]);
+    };
+    
+    const removePhoto = (urlToRemove) => {
+        setPhotoURLs(prev => prev.filter(url => url !== urlToRemove));
     };
 
     const handleSave = () => {
@@ -117,11 +122,11 @@ const InspectionForm = ({ asset, onBack, onSave, loading }) => {
             category: r.category,
             text: r.text,
             cumple: !!r.cumple,
-            comment: r.comment || '',
+            comment: '',
             status: r.cumple ? 'OK' : 'ALERT',
-            answer: r.cumple ? 'No' : 'Si',
+            answer: r.cumple ? 'Si' : 'No',
         }));
-        onSave(mapped, notes, overall);
+        onSave(mapped, notes, overall, photoURLs);
     };
 
     // Guardar aunque haya ítems sin observación: no es obligatorio comentar
@@ -147,46 +152,9 @@ const InspectionForm = ({ asset, onBack, onSave, loading }) => {
                 </span>
             </p>            <div className="space-y-6">
                 <p className="text-sm italic text-gray-400 mb-4 border-b border-gray-700 pb-2">
-                    Marque los resultados. Un resultado 'Si' (para booleanos) o cualquier alerta en notas, marcarÃ¡ el punto como ALERTA.
+                    Marque "SI" el activo cumple con las condiciones y no Marque nada si el activo tiene alguna observacion
                 </p>
-                {false && results.map((item, index) => (
-                    <div
-                        key={index}
-                        className={`p-4 rounded-lg shadow-md transition duration-150 ${item.status === 'ALERT' ? 'bg-red-900 border-l-4 border-red-500' : 'bg-gray-700 border-l-4 border-teal-500'}`}
-                    >
-                        <label className="block text-lg font-medium mb-2 text-gray-50">
-                            {index + 1}. {item.text}
-                        </label>
-                        {item.type === 'boolean' ? (
-                            <div className="flex space-x-4 mt-2">
-                                {['No', 'Si'].map((option) => (
-                                    <button
-                                        key={option}
-                                        onClick={() => handleInputChange(index, option)}
-                                        className={`px-4 py-2 rounded-lg font-semibold transition duration-150 ${item.answer === option ? (option === 'Si' ? 'bg-red-600' : 'bg-green-600') : 'bg-gray-600 hover:bg-gray-500'}`}
-                                    >
-                                        {option}
-                                    </button>
-                                ))}
-                            </div>
-                        ) : (
-                            <input
-                                type="text"
-                                value={item.answer}
-                                onChange={(e) => handleInputChange(index, e.target.value)}
-                                className="w-full mt-2 p-2 rounded-lg bg-gray-600 text-white border border-gray-500 focus:ring-2 focus:ring-blue-500"
-                                placeholder="Ingrese valor..."
-                            />
-                        )}
-                        <textarea
-                            value={item.notes}
-                            onChange={(e) => handleNotesChange(index, e.target.value)}
-                            className="w-full mt-3 p-2 rounded-lg bg-gray-600 text-white border border-gray-500 focus:ring-2 focus:ring-blue-500"
-                            placeholder="Notas adicionales (opcional)..."
-                            rows="2"
-                        />
-                    </div>
-                ))}
+                
                 {/* Nueva checklist agrupada IV / IS */}
                 <div className="bg-gray-700/40 rounded-md mt-2">
                     <button type="button" onClick={()=>setIvOpen(v=>!v)} className="w-full flex justify-between items-center px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-md">
@@ -201,9 +169,6 @@ const InspectionForm = ({ asset, onBack, onSave, loading }) => {
                                         <input type="checkbox" checked={item.cumple} onChange={()=>toggleCumple(item.index)} className="w-5 h-5 rounded bg-gray-600 border-gray-500 text-teal-500 focus:ring-teal-500" />
                                         <span>{item.text}</span>
                                     </label>
-                                    {!item.cumple && (
-                                        <textarea className="w-full mt-3 p-2 bg-gray-600 border border-gray-500 rounded-lg focus:ring-teal-500 focus:border-teal-500 text-sm" rows="2" placeholder="Observacion(obligatoria si no cumple) " value={item.comment} onChange={(e)=>setComment(item.index, e.target.value)} />
-                                    )}
                                 </div>
                             ))}
                         </div>
@@ -222,9 +187,6 @@ const InspectionForm = ({ asset, onBack, onSave, loading }) => {
                                         <input type="checkbox" checked={item.cumple} onChange={()=>toggleCumple(item.index)} className="w-5 h-5 rounded bg-gray-600 border-gray-500 text-teal-500 focus:ring-teal-500" />
                                         <span>{item.text}</span>
                                     </label>
-                                    {!item.cumple && (
-                                        <textarea className="w-full mt-3 p-2 bg-gray-600 border border-gray-500 rounded-lg focus:ring-teal-500 focus:border-teal-500 text-sm" rows="2" placeholder="Observacion(obligatoria si no cumple) " value={item.comment} onChange={(e)=>setComment(item.index, e.target.value)} />
-                                    )}
                                 </div>
                             ))}
                         </div>
@@ -241,6 +203,31 @@ const InspectionForm = ({ asset, onBack, onSave, loading }) => {
                     placeholder="Resumen, hallazgos importantes, etc."
                 />
             </div>
+            
+            <div className="mt-8">
+                <label className="block text-lg font-medium mb-2 text-gray-50">Evidencia Fotográfica</label>
+                <div className="flex flex-wrap gap-4 items-start">
+                    <StorageUploader 
+                        onUploadComplete={handleUploadComplete}
+                        uploadPath={`inspections/${asset.id}`}
+                        label="Adjuntar Foto"
+                    />
+                    {photoURLs.map(url => (
+                        <div key={url} className="relative">
+                            <a href={url} target="_blank" rel="noopener noreferrer">
+                                <img src={url} alt="Evidencia de inspección" className="w-24 h-24 rounded-lg object-cover" />
+                            </a>
+                            <button 
+                                onClick={() => removePhoto(url)}
+                                className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full p-1"
+                            >
+                                <X className="w-3 h-3" />
+                            </button>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
             <div className="mt-4 flex items-center gap-3">
                 <label className="text-lg font-medium text-gray-200">Estado del Activo</label>
                 <select value={overall} onChange={e=>setOverall(e.target.value)} className="p-2 bg-gray-700 border border-gray-600 rounded">

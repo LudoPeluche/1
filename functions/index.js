@@ -23,16 +23,12 @@ setGlobalOptions({ maxInstances: 10 });
  */
 exports.createUser = onCall(async (request) => {
     // --- SECURITY CHECK ---
-    // For now, we'll leave this commented out so we can create the first admin user.
-    // After the first admin is created, we will uncomment this block.
-    /*
     if (request.auth?.token?.role !== "admin") {
         throw new HttpsError(
             "permission-denied",
             "This function can only be called by an admin."
         );
     }
-    */
 
     const { email, password, role } = request.data;
 
@@ -86,7 +82,6 @@ exports.createUser = onCall(async (request) => {
 });
 
 exports.bulkAddAssets = onCall(async (request) => {
-/*
     // 1. Authentication and Authorization Check
     if (request.auth?.token?.role !== "admin") {
         throw new HttpsError(
@@ -94,7 +89,6 @@ exports.bulkAddAssets = onCall(async (request) => {
             "This function can only be called by an admin."
         );
     }
-    */
 
     // 2. Input Validation
     const { assets, appId } = request.data;

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { doc, onSnapshot, collection, query, where, orderBy, deleteDoc } from 'firebase/firestore';
-import { ArrowLeft, Trash2, FileText, Loader, Clock, Calendar } from 'lucide-react';
+import jsPDF from 'jspdf';
+import { ArrowLeft, Trash2, FileText, Loader, Clock, Calendar, Camera, Download } from 'lucide-react';
 
 // PequeÃ±o grÃ¡fico de lÃ­nea para tendencia A/B/C (o OK/ALERT como fallback)
 const StatusTrendChart = ({ points = [] }) => {
@@ -33,6 +34,73 @@ const AssetHistory = ({ db, appId, asset, onBack, onInspect }) => {
     const [historyInspections, setHistoryInspections] = useState([]);
     const [selectedInspection, setSelectedInspection] = useState(null);
     const [loadingHistory, setLoadingHistory] = useState(true);
+
+    const handleDownloadPdf = () => {
+        if (!selectedInspection) return;
+        const docPdf = new jsPDF();
+        const margin = 14;
+        const pageHeight = docPdf.internal.pageSize.getHeight();
+        let y = 20;
+
+        const addLine = (text) => {
+            const lines = docPdf.splitTextToSize(text, 180);
+            lines.forEach((line) => {
+                if (y > pageHeight - 12) {
+                    docPdf.addPage();
+                    y = 20;
+                }
+                docPdf.text(line, margin, y);
+                y += 6;
+            });
+        };
+
+        const formatDate = (date) => {
+            if (!date) return 'N/A';
+            try {
+                return date.toLocaleString();
+            } catch {
+                return 'N/A';
+            }
+        };
+
+        docPdf.setFontSize(16);
+        addLine(`Inspeccion de ${asset.name}`);
+        docPdf.setFontSize(11);
+        addLine(`Fecha: ${formatDate(selectedInspection.date)}`);
+        addLine(`Activo: ${asset.tag ? `${asset.tag} - ${asset.name}` : asset.name}`);
+        addLine(`Ubicacion: ${asset.location || 'N/D'}`);
+        addLine(`Criticidad: ${asset.criticality || 'N/A'}`);
+        addLine(`Estado general: ${selectedInspection.overallStatus || 'N/A'}`);
+        y += 4;
+
+        docPdf.setFontSize(12);
+        addLine('Resultados del checklist:');
+        docPdf.setFontSize(10);
+        (selectedInspection.results || []).forEach((r, idx) => {
+            const label = r.answer === 'Si' || r.status === 'OK' || r.cumple ? 'OK' : 'ALERT';
+            addLine(`${idx + 1}. [${label}] ${r.text}`);
+        });
+
+        if (selectedInspection.notes) {
+            y += 4;
+            docPdf.setFontSize(12);
+            addLine('Notas:');
+            docPdf.setFontSize(10);
+            addLine(selectedInspection.notes);
+        }
+
+        if (selectedInspection.photoURLs && selectedInspection.photoURLs.length > 0) {
+            y += 4;
+            docPdf.setFontSize(12);
+            addLine('Evidencia (URLs):');
+            docPdf.setFontSize(10);
+            selectedInspection.photoURLs.forEach((url, idx) => addLine(`${idx + 1}. ${url}`));
+        }
+
+        const dateSlug = selectedInspection.date ? selectedInspection.date.toISOString().slice(0, 10) : 'sin-fecha';
+        const nameSlug = `${asset.name}`.replace(/[^a-zA-Z0-9-_]/g, '_');
+        docPdf.save(`inspeccion-${nameSlug}-${dateSlug}.pdf`);
+    };
 
     const handleDeleteAsset = async () => {
         if (window.confirm(`¿Estás seguro de que quieres eliminar el activo "${asset.name}"? Esta acción no se puede deshacer.`)) {
@@ -84,7 +152,9 @@ const AssetHistory = ({ db, appId, asset, onBack, onInspect }) => {
     const daysSinceLast = lastInspection?.date ? Math.max(0, Math.floor((Date.now() - lastInspection.date.getTime())/(1000*60*60*24))) : null;
     const lastNotCompliant = useMemo(() => {
       if (!lastInspection?.results) return null;
-      return lastInspection.results.reduce((acc, r) => acc + ((r.status === 'ALERT' || r.answer === 'Si') ? 1 : 0), 0);
+      if (!lastInspection?.results) return null;
+      // Corregido: Contar solo cuando la respuesta es 'No'
+      return lastInspection.results.reduce((acc, r) => acc + (r.answer === 'No' ? 1 : 0), 0);
     }, [lastInspection]);
 
     return (
@@ -112,6 +182,13 @@ const AssetHistory = ({ db, appId, asset, onBack, onInspect }) => {
                         className="px-4 py-2 bg-red-600 hover:bg-red-500 rounded-lg text-white transition duration-150 flex items-center"
                     >
                         <Trash2 className="w-4 h-4 mr-2" /> Eliminar Activo
+                    </button>
+                    <button
+                        onClick={handleDownloadPdf}
+                        disabled={!selectedInspection}
+                        className={`px-4 py-2 rounded-lg text-white transition duration-150 flex items-center ${selectedInspection ? 'bg-indigo-600 hover:bg-indigo-500' : 'bg-gray-600 cursor-not-allowed'}`}
+                    >
+                        <Download className="w-4 h-4 mr-2" /> Descargar PDF
                     </button>
                     <button
                         onClick={() => onInspect ? onInspect(asset) : null}
@@ -179,24 +256,51 @@ const AssetHistory = ({ db, appId, asset, onBack, onInspect }) => {
                         </div>
                     )}
                 </div>
-                 <div className="lg:col-span-2 bg-gray-800 p-6 rounded-xl">
+                 <div className="lg:col-span-2 bg-gray-800 p-6 rounded-xl h-[32rem]">
                   {selectedInspection ? (
                     <>
                       <div className="mb-4 flex justify-between items-center border-b border-gray-700 pb-2">
                         <h3 className="text-2xl font-bold text-white">Registro del {selectedInspection.date.toLocaleDateString()}</h3>
-
                       </div>
-                      <div className="space-y-3 h-80 overflow-y-auto">
-                        {selectedInspection.results.map((r,idx)=> (
-                          <div key={idx} className={`p-3 rounded-lg ${r.status==='ALERT'?'bg-red-900/50 border-l-4 border-red-500':'bg-gray-700 border-l-4 border-green-500'}`}>
-                            <p className="text-base font-medium text-gray-50">{idx+1}. {r.text}</p>
-                            <div className="flex justify-between text-sm mt-1">
-                                <span className="text-gray-300">Respuesta: <strong>{r.answer}</strong></span>
-                                <span className={`text-xs ${r.status==='OK'?'text-green-300':'text-red-300'}`}>{r.status}</span>
+                      <div className="space-y-4 h-[90%] overflow-y-auto pr-2">
+                        <div>
+                            <h4 className="text-lg font-semibold text-gray-200 mb-2">Resultados del Checklist</h4>
+                            <div className="space-y-3">
+                                {selectedInspection.results.map((r,idx)=> {
+                                  const isOk = r.answer === 'Si';
+                                  const status = isOk ? 'OK' : 'ALERT';
+                                  return (
+                                    <div key={idx} className={`p-3 rounded-lg ${!isOk ? 'bg-red-900/50 border-l-4 border-red-500' : 'bg-gray-700 border-l-4 border-green-500'}`}>
+                                        <p className="text-base font-medium text-gray-50">{idx+1}. {r.text}</p>
+                                        <div className="flex justify-between text-sm mt-1">
+                                            <span className="text-gray-300">Respuesta: <strong>{r.answer}</strong></span>
+                                            <span className={`text-xs ${isOk ? 'text-green-300' : 'text-red-300'}`}>{status}</span>
+                                        </div>
+                                    </div>
+                                  );
+                                })}
                             </div>
-                            {r.notes && (<p className="text-xs text-gray-400 mt-1 italic">Comentario: {r.notes}</p>)}
-                          </div>
-                        ))}
+                        </div>
+
+                        {selectedInspection.notes && (
+                            <div>
+                                <h4 className="text-lg font-semibold text-gray-200 mb-2">Notas Generales</h4>
+                                <p className="text-gray-300 bg-gray-700/50 p-3 rounded-lg whitespace-pre-wrap">{selectedInspection.notes}</p>
+                            </div>
+                        )}
+
+                        {selectedInspection.photoURLs && selectedInspection.photoURLs.length > 0 && (
+                            <div>
+                                <h4 className="text-lg font-semibold text-gray-200 mb-2 flex items-center"><Camera className="w-5 h-5 mr-2" /> Evidencia Fotográfica</h4>
+                                <div className="flex flex-wrap gap-4">
+                                    {selectedInspection.photoURLs.map(url => (
+                                        <a key={url} href={url} target="_blank" rel="noopener noreferrer" className="block w-24 h-24 rounded-lg overflow-hidden ring-2 ring-offset-2 ring-offset-gray-800 ring-blue-500">
+                                            <img src={url} alt="Evidencia de inspección" className="w-full h-full object-cover hover:opacity-80 transition-opacity" />
+                                        </a>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                       </div>
                     </>
                   ) : (

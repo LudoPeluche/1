@@ -26,6 +26,23 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // Valida que los datos entrantes tengan campos requeridos y tipos correctos.
+    function isValidAsset() {
+      let data = request.resource.data;
+      return data.keys().hasAll(['name', 'status', 'createdAt'])
+          && data.name is string
+          && data.name.size() > 0
+          && data.status is string;
+    }
+
+    function isValidInspection() {
+        let data = request.resource.data;
+        return data.keys().hasAll(['assetId', 'inspectorUserId', 'date', 'results', 'overallStatus'])
+             && data.assetId is string
+             && data.inspectorUserId == request.auth.uid
+             && data.overallStatus in ['OK', 'Needs Repair', 'Critical', 'Uninspected'];
+    }
+
     // --- Reglas por Colección ---
 
     // La colección 'admins' es de solo lectura para los clientes.
@@ -50,15 +67,15 @@ service cloud.firestore {
         // Cualquier usuario autenticado puede leer los activos.
         allow read: if isSignedIn();
         // Solo los administradores pueden crear, actualizar o borrar activos.
-        allow write: if isAppAdmin(appId);
+        allow write: if isAppAdmin(appId) && (!request.resource.data.keys().hasAny(['createdAt']) || isValidAsset());
       }
 
       // Inspecciones de los activos.
       match /inspections/{inspectionId} {
         // Cualquier usuario autenticado puede leer las inspecciones.
         allow read: if isSignedIn();
-        // Cualquier usuario autenticado (admin o tecnico) puede crear una nueva inspección.
-        allow create: if isSignedIn();
+        // Cualquier usuario autenticado (admin o tecnico) puede crear una nueva inspección con validación de datos.
+        allow create: if isSignedIn() && isValidInspection();
         // Solo los administradores pueden modificar o eliminar una inspección existente.
         allow update, delete: if isAppAdmin(appId);
       }
