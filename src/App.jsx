@@ -211,7 +211,8 @@ const App = () => {
             navigate('/');
             setError("✓ Inspección guardada.");
         } catch (e) {
-            setError("Error al guardar la Inspección.");
+            console.error("Error al guardar inspección:", e);
+            setError(`Error al guardar la Inspección: ${e?.message || 'revisa conexión/permisos'}`);
         } finally {
             setLoading(false);
         }
