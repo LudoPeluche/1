@@ -14,6 +14,7 @@ import AssetHistory from './components/AssetHistory';
 import InspectionForm from './components/InspectionForm';
 import { APP_ID } from './config';
 import { useAuth } from './context/AuthContext';
+import InstallPrompt from './components/InstallPrompt';
 
 const AssetHistoryPage = ({ assets, db, appId, userRole }) => {
     const navigate = useNavigate();
@@ -264,6 +265,7 @@ const App = () => {
                         <Link to="/" className={getLinkClass('/')}><List className="w-5 h-5 mr-2" /> Activos</Link>
                         {userRole === 'admin' && <Link to="/dashboard" className={getLinkClass('/dashboard')}><BarChart2 className="w-5 h-5 mr-2" /> Dashboard</Link>}
                         {userRole === 'admin' && <Link to="/users" className={getLinkClass('/users')}><Users className="w-5 h-5 mr-2" /> Usuarios</Link>}
+                        <InstallPrompt />
                         <button onClick={logout} className="px-3 py-2 rounded-lg font-semibold transition duration-150 flex items-center bg-red-600 text-white hover:bg-red-500"><LogOut className="w-5 h-5 mr-2" /> Salir</button>
                     </nav>
                 </div>
