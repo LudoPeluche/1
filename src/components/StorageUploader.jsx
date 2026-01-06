@@ -29,7 +29,7 @@ const StorageUploader = ({ onUploadComplete, uploadPath, label = 'Adjuntar Archi
       },
       (err) => {
         console.error("Upload error:", err);
-        setError('Error al subir el archivo.');
+        setError(`Error al subir el archivo: ${err?.message || 'intenta nuevamente.'}`);
         setUploading(false);
       },
       async () => {
@@ -38,7 +38,7 @@ const StorageUploader = ({ onUploadComplete, uploadPath, label = 'Adjuntar Archi
           onUploadComplete(downloadURL, storagePath);
         } catch (err) {
           console.error("Error getting download URL:", err);
-          setError('Error al obtener la URL del archivo.');
+          setError(`Error al obtener la URL del archivo: ${err?.message || ''}`);
         } finally {
           setUploading(false);
         }
@@ -74,4 +74,3 @@ const StorageUploader = ({ onUploadComplete, uploadPath, label = 'Adjuntar Archi
 };
 
 export default StorageUploader;
-
