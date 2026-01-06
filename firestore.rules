@@ -40,7 +40,7 @@ service cloud.firestore {
         return data.keys().hasAll(['assetId', 'inspectorUserId', 'date', 'results', 'overallStatus'])
              && data.assetId is string
              && data.inspectorUserId == request.auth.uid
-             && data.overallStatus in ['OK', 'Needs Repair', 'Critical', 'Uninspected'];
+             && data.overallStatus in ['OK', 'Needs Repair', 'Critical', 'Uninspected', 'A', 'B', 'C', 'D', 'X', 'ALERT'];
     }
 
     // --- Reglas por Colección ---
