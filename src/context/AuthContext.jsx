@@ -31,7 +31,8 @@ export const AuthProvider = ({ children }) => {
                     } else {
                         // If user doc doesn't exist, maybe they are not authorized or just created
                         console.warn(`User document not found for: ${currentUser.email}`);
-                        setUserRole(null);
+                        // Fallback to tecnico to allow basic read-only access
+                        setUserRole('tecnico');
                         // Optional: Force logout if strict
                     }
                 }, (err) => {

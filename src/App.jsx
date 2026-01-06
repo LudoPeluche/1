@@ -101,7 +101,8 @@ const App = () => {
     }, []);
 
     useEffect(() => {
-        if (userRole) {
+        // Cargar activos para cualquier usuario autenticado (rol admin o técnico)
+        if (user) {
             const assetCollectionPath = `artifacts/${APP_ID}/assets`;
             const q = query(collection(db, assetCollectionPath), orderBy('createdAt', 'desc'), limit(100));
             const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -111,7 +112,7 @@ const App = () => {
             }, (e) => setError("Error al cargar activos."));
             return () => unsubscribe();
         }
-    }, [userRole]);
+    }, [user]);
 
     useEffect(() => {
         if (user) {
