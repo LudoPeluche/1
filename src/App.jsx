@@ -1,11 +1,22 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Routes, Route, Link, useNavigate, useParams, useLocation } from 'react-router-dom';
-import { db } from './firebase'; // auth imported but not used directly anymore
+import { motion, AnimatePresence } from 'framer-motion';
+import { db } from './firebase';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { collection, onSnapshot, addDoc, query, serverTimestamp, doc, updateDoc, orderBy, limit, setLogLevel, getDoc } from 'firebase/firestore';
-// Iconos
-import { Loader, List, LogOut, BarChart2, AlertTriangle, Users } from 'lucide-react';
-// Componentes
+import {
+    Loader,
+    List,
+    LogOut,
+    BarChart2,
+    AlertTriangle,
+    Users,
+    Menu,
+    X,
+    ChevronRight,
+    Settings,
+    Bell,
+} from 'lucide-react';
 import Login from './components/Login';
 import UserManagement from './components/UserManagement';
 import AssetList from './components/AssetList';
@@ -15,13 +26,30 @@ import InspectionForm from './components/InspectionForm';
 import { APP_ID } from './config';
 import { useAuth } from './context/AuthContext';
 import InstallPrompt from './components/InstallPrompt';
+import logo from './assets/logo.png';
+
+// Page transition variants
+const pageVariants = {
+    initial: { opacity: 0, y: 20 },
+    animate: { opacity: 1, y: 0, transition: { duration: 0.4, ease: 'easeOut' } },
+    exit: { opacity: 0, y: -20, transition: { duration: 0.3 } },
+};
 
 const AssetHistoryPage = ({ assets, db, appId, userRole }) => {
     const navigate = useNavigate();
     const { assetId } = useParams();
     const asset = assets.find(a => a.id === assetId);
 
-    if (!asset) return <div className="flex items-center justify-center p-8"><Loader className="w-8 h-8 animate-spin mr-2" /> Cargando activo...</div>;
+    if (!asset) {
+        return (
+            <div className="flex items-center justify-center min-h-[400px]">
+                <div className="text-center">
+                    <Loader className="w-10 h-10 animate-spin text-indigo-500 mx-auto mb-4" />
+                    <p className="text-gray-400">Cargando activo...</p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <AssetHistory
@@ -39,16 +67,12 @@ const InspectionPage = ({ assets, onSave, loading }) => {
     const { assetId } = useParams();
     const [fetchedAsset, setFetchedAsset] = useState(null);
     const existingAsset = assets.find(a => a.id === assetId);
-
     const asset = existingAsset || fetchedAsset;
 
     useEffect(() => {
         if (!existingAsset && assetId) {
             const fetchAsset = async () => {
                 try {
-                    // We need db and appId here. Ideally they should be props or imported, 
-                    // but since they are imported in the module scope, we can use them.
-                    // Wait, db is imported. APP_ID is imported.
                     const docRef = doc(db, `artifacts/${APP_ID}/assets`, assetId);
                     const docSnap = await getDoc(docRef);
                     if (docSnap.exists()) {
@@ -62,7 +86,16 @@ const InspectionPage = ({ assets, onSave, loading }) => {
         }
     }, [existingAsset, assetId]);
 
-    if (!asset) return <div className="flex items-center justify-center p-8"><Loader className="w-8 h-8 animate-spin mr-2" /> Cargando activo...</div>
+    if (!asset) {
+        return (
+            <div className="flex items-center justify-center min-h-[400px]">
+                <div className="text-center">
+                    <Loader className="w-10 h-10 animate-spin text-indigo-500 mx-auto mb-4" />
+                    <p className="text-gray-400">Cargando activo...</p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <InspectionForm
@@ -74,9 +107,233 @@ const InspectionPage = ({ assets, onSave, loading }) => {
     );
 };
 
+// Navigation Link Component
+const NavLink = ({ to, icon: Icon, label, isActive, onClick }) => (
+    <Link
+        to={to}
+        onClick={onClick}
+        className={`nav-link ${isActive ? 'active' : ''}`}
+    >
+        <Icon className="w-5 h-5" />
+        <span>{label}</span>
+    </Link>
+);
+
+// Mobile Menu
+const MobileMenu = ({ isOpen, onClose, userRole, location, logout }) => (
+    <AnimatePresence>
+        {isOpen && (
+            <>
+                <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden"
+                    onClick={onClose}
+                />
+                <motion.div
+                    initial={{ x: '100%' }}
+                    animate={{ x: 0 }}
+                    exit={{ x: '100%' }}
+                    transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                    className="fixed right-0 top-0 bottom-0 w-72 bg-dashboard-card border-l border-white/5 z-50 lg:hidden"
+                >
+                    <div className="p-6">
+                        <div className="flex items-center justify-between mb-8">
+                            <h2 className="text-lg font-semibold text-white">Menu</h2>
+                            <button onClick={onClose} className="p-2 rounded-lg hover:bg-white/5">
+                                <X className="w-5 h-5 text-gray-400" />
+                            </button>
+                        </div>
+                        <nav className="space-y-2">
+                            <NavLink
+                                to="/"
+                                icon={List}
+                                label="Activos"
+                                isActive={location.pathname === '/'}
+                                onClick={onClose}
+                            />
+                            {userRole === 'admin' && (
+                                <>
+                                    <NavLink
+                                        to="/dashboard"
+                                        icon={BarChart2}
+                                        label="Dashboard"
+                                        isActive={location.pathname === '/dashboard'}
+                                        onClick={onClose}
+                                    />
+                                    <NavLink
+                                        to="/users"
+                                        icon={Users}
+                                        label="Usuarios"
+                                        isActive={location.pathname === '/users'}
+                                        onClick={onClose}
+                                    />
+                                </>
+                            )}
+                        </nav>
+                        <div className="absolute bottom-6 left-6 right-6">
+                            <button
+                                onClick={() => { logout(); onClose(); }}
+                                className="btn-danger w-full flex items-center justify-center gap-2"
+                            >
+                                <LogOut className="w-5 h-5" />
+                                Cerrar Sesion
+                            </button>
+                        </div>
+                    </div>
+                </motion.div>
+            </>
+        )}
+    </AnimatePresence>
+);
+
+// Header Component
+const Header = ({ user, userRole, logout, location }) => {
+    const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+    return (
+        <>
+            <motion.header
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="glass-card rounded-2xl mb-8 p-4 sm:p-6"
+            >
+                {/* Main Header Content */}
+                <div className="flex items-center justify-between">
+                    {/* Logo & Title */}
+                    <div className="flex items-center gap-4">
+                        <div className="relative">
+                            <div className="absolute inset-0 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl blur-lg opacity-50" />
+                            <img
+                                src={logo}
+                                alt="PIA App"
+                                className="relative w-12 h-12 rounded-xl bg-white object-contain p-1.5 shadow-lg"
+                            />
+                        </div>
+                        <div className="hidden sm:block">
+                            <h1 className="text-xl sm:text-2xl font-bold text-gradient">
+                                PIA App
+                            </h1>
+                            <p className="text-xs text-gray-500">Predictive Inspection App</p>
+                        </div>
+                    </div>
+
+                    {/* Desktop Navigation */}
+                    <nav className="hidden lg:flex items-center gap-2">
+                        <NavLink
+                            to="/"
+                            icon={List}
+                            label="Activos"
+                            isActive={location.pathname === '/'}
+                        />
+                        {userRole === 'admin' && (
+                            <>
+                                <NavLink
+                                    to="/dashboard"
+                                    icon={BarChart2}
+                                    label="Dashboard"
+                                    isActive={location.pathname === '/dashboard'}
+                                />
+                                <NavLink
+                                    to="/users"
+                                    icon={Users}
+                                    label="Usuarios"
+                                    isActive={location.pathname === '/users'}
+                                />
+                            </>
+                        )}
+                    </nav>
+
+                    {/* Right Section */}
+                    <div className="flex items-center gap-3">
+                        <InstallPrompt />
+
+                        {/* User Info (Desktop) */}
+                        <div className="hidden md:flex items-center gap-3 pl-3 border-l border-white/10">
+                            <div className="text-right">
+                                <p className="text-sm font-medium text-white truncate max-w-[150px]">
+                                    {user.displayName || user.email?.split('@')[0]}
+                                </p>
+                                <p className="text-xs text-gray-500 capitalize">{userRole}</p>
+                            </div>
+                            <button
+                                onClick={logout}
+                                className="p-2.5 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
+                                title="Cerrar sesion"
+                            >
+                                <LogOut className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        {/* Mobile Menu Button */}
+                        <button
+                            onClick={() => setMobileMenuOpen(true)}
+                            className="lg:hidden p-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-colors"
+                        >
+                            <Menu className="w-5 h-5 text-gray-300" />
+                        </button>
+                    </div>
+                </div>
+
+                {/* Breadcrumb / Context */}
+                <div className="flex items-center gap-2 mt-4 pt-4 border-t border-white/5 text-sm text-gray-500">
+                    <span>Entorno:</span>
+                    <span className="px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-400 text-xs font-mono">
+                        {APP_ID}
+                    </span>
+                    <ChevronRight className="w-4 h-4" />
+                    <span className="text-gray-400">
+                        {location.pathname === '/' && 'Lista de Activos'}
+                        {location.pathname === '/dashboard' && 'Dashboard'}
+                        {location.pathname === '/users' && 'Gestion de Usuarios'}
+                        {location.pathname.includes('/asset/') && !location.pathname.includes('/inspect') && 'Historial de Activo'}
+                        {location.pathname.includes('/inspect') && 'Nueva Inspeccion'}
+                    </span>
+                </div>
+            </motion.header>
+
+            <MobileMenu
+                isOpen={mobileMenuOpen}
+                onClose={() => setMobileMenuOpen(false)}
+                userRole={userRole}
+                location={location}
+                logout={logout}
+            />
+        </>
+    );
+};
+
+// Error Alert Component
+const ErrorAlert = ({ error, onClose }) => (
+    <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -10 }}
+        className={`mb-6 p-4 rounded-xl flex items-center gap-3 ${
+            error.startsWith('✓')
+                ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400'
+                : 'bg-red-500/10 border border-red-500/20 text-red-400'
+        }`}
+    >
+        {error.startsWith('✓') ? (
+            <div className="p-2 rounded-lg bg-emerald-500/20">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+            </div>
+        ) : (
+            <div className="p-2 rounded-lg bg-red-500/20">
+                <AlertTriangle className="w-5 h-5" />
+            </div>
+        )}
+        <span className="flex-1">{error}</span>
+    </motion.div>
+);
+
+// Main App Component
 const App = () => {
     const { user, userRole, logout } = useAuth();
-
     const [assets, setAssets] = useState([]);
     const [latestInspections, setLatestInspections] = useState([]);
     const [allInspections, setAllInspections] = useState([]);
@@ -85,7 +342,7 @@ const App = () => {
     const [newAssetTag, setNewAssetTag] = useState('');
     const [newAssetDescription, setNewAssetDescription] = useState('');
     const [newAssetCriticality, setNewAssetCriticality] = useState('D');
-    const [loading, setLoading] = useState(false); // Local loading for actions
+    const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [users, setUsers] = useState([]);
@@ -94,14 +351,11 @@ const App = () => {
     const navigate = useNavigate();
     const location = useLocation();
 
-    // Remove old auth effects (lines 75-110 in original)
-
     useEffect(() => {
-        setLogLevel('error'); // Keep this or move to main
+        setLogLevel('error');
     }, []);
 
     useEffect(() => {
-        // Cargar activos para cualquier usuario autenticado (rol admin o técnico)
         if (user) {
             const assetCollectionPath = `artifacts/${APP_ID}/assets`;
             const q = query(collection(db, assetCollectionPath), orderBy('createdAt', 'desc'), limit(100));
@@ -109,7 +363,7 @@ const App = () => {
                 const assetsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 setAssets(assetsData);
                 setError(null);
-            }, (e) => setError("Error al cargar activos."));
+            }, () => setError("Error al cargar activos."));
             return () => unsubscribe();
         }
     }, [user]);
@@ -151,14 +405,14 @@ const App = () => {
         if (userRole !== 'admin') return;
         try {
             await updateDoc(doc(db, `artifacts/${APP_ID}/users`, uid), { role: newRole });
-        } catch (error) {
+        } catch {
             setError("Error al actualizar el rol.");
         }
     };
 
     const handleUserCreated = () => {
         setUsersTrigger(c => c + 1);
-        setError("✓ Usuario creado con éxito.");
+        setError("✓ Usuario creado con exito.");
         setTimeout(() => setError(null), 5000);
     };
 
@@ -182,7 +436,9 @@ const App = () => {
             setNewAssetTag('');
             setNewAssetDescription('');
             setNewAssetCriticality('D');
-        } catch (e) {
+            setError("✓ Activo creado exitosamente.");
+            setTimeout(() => setError(null), 3000);
+        } catch {
             setError("Error al guardar el activo.");
         } finally {
             setLoading(false);
@@ -209,10 +465,11 @@ const App = () => {
                 lastInspectionDate: serverTimestamp(),
             });
             navigate('/');
-            setError("✓ Inspección guardada.");
+            setError("✓ Inspeccion guardada exitosamente.");
+            setTimeout(() => setError(null), 3000);
         } catch (e) {
-            console.error("Error al guardar inspección:", e);
-            setError(`Error al guardar la Inspección: ${e?.message || 'revisa conexión/permisos'}`);
+            console.error("Error al guardar inspeccion:", e);
+            setError(`Error al guardar la Inspeccion: ${e?.message || 'revisa conexion/permisos'}`);
         } finally {
             setLoading(false);
         }
@@ -222,16 +479,14 @@ const App = () => {
         if (userRole !== 'admin') {
             return callback(false, "Permiso denegado.");
         }
-
         try {
             const functions = getFunctions();
             const bulkAddAssets = httpsCallable(functions, 'bulkAddAssets');
             const result = await bulkAddAssets({ assets, appId: APP_ID });
-
             if (result.data.success) {
                 callback(true, `Carga masiva completada: ${result.data.createdCount} activos creados.`);
             } else {
-                throw new Error(result.data.error || "Error desconocido en la función de carga masiva.");
+                throw new Error(result.data.error || "Error desconocido en la funcion de carga masiva.");
             }
         } catch (error) {
             console.error("Error calling bulkAddAssets function:", error);
@@ -239,106 +494,84 @@ const App = () => {
         }
     }, [userRole]);
 
-    // Handled by Context now
-    // if (!isAuthReady) ...
-
     if (!user) {
         return <Login />;
     }
 
-    const getLinkClass = (path) => {
-        const baseClass = "px-3 py-2 rounded-lg font-semibold transition duration-150 flex items-center";
-        const activeClass = {
-            '/': 'bg-blue-600 text-white',
-            '/dashboard': 'bg-teal-600 text-white',
-            '/users': 'bg-purple-600 text-white',
-        }[path];
-        return `${baseClass} ${location.pathname === path ? activeClass : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`;
-    }
-
     return (
-        <div className="min-h-screen bg-gray-900 text-gray-100 p-2 sm:p-4 md:p-8 font-sans max-w-7xl mx-auto">
-            <header className="mb-8 pb-4 border-b border-gray-700">
-                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
-                    <h1 className="text-3xl sm:text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-teal-400 text-center sm:text-left">
-                        PIA (Predictive Inspection App)
-                    </h1>
-                    <nav className="flex flex-wrap justify-center gap-2 items-center">
-                        <Link to="/" className={getLinkClass('/')}><List className="w-5 h-5 mr-2" /> Activos</Link>
-                        {userRole === 'admin' && <Link to="/dashboard" className={getLinkClass('/dashboard')}><BarChart2 className="w-5 h-5 mr-2" /> Dashboard</Link>}
-                        {userRole === 'admin' && <Link to="/users" className={getLinkClass('/users')}><Users className="w-5 h-5 mr-2" /> Usuarios</Link>}
-                        <InstallPrompt />
-                        <button onClick={logout} className="px-3 py-2 rounded-lg font-semibold transition duration-150 flex items-center bg-red-600 text-white hover:bg-red-500"><LogOut className="w-5 h-5 mr-2" /> Salir</button>
-                    </nav>
-                </div>
-                <p className="text-sm text-gray-400 mt-1">{`Usuario: ${user.displayName || user.email}`} | Rol: {userRole} | Entorno: {APP_ID}</p>
-            </header>
+        <div className="min-h-screen text-gray-100 p-3 sm:p-4 md:p-6 lg:p-8">
+            <div className="max-w-7xl mx-auto">
+                <Header user={user} userRole={userRole} logout={logout} location={location} />
 
-            {error && <div className="p-3 mb-4 bg-red-800 rounded-lg flex items-center shadow-lg"><AlertTriangle className="w-5 h-5 mr-2" /><span>{error}</span></div>}
+                <AnimatePresence mode="wait">
+                    {error && <ErrorAlert key="error" error={error} />}
+                </AnimatePresence>
 
-            <main>
-                <Routes>
-                    <Route path="/" element={
-                        <AssetList
-                            userRole={userRole}
-                            handleAddAsset={handleAddAsset}
-                            onBulkAddAssets={handleBulkAddAssets}
-                            loading={loading}
-                            newAssetName={newAssetName} setNewAssetName={setNewAssetName}
-                            newAssetLocation={newAssetLocation} setNewAssetLocation={setNewAssetLocation}
-                            newAssetDescription={newAssetDescription} setNewAssetDescription={setNewAssetDescription}
-                            newAssetTag={newAssetTag} setNewAssetTag={setNewAssetTag}
-                            newAssetCriticality={newAssetCriticality} setNewAssetCriticality={setNewAssetCriticality}
-                            filteredAssets={filteredAssets}
-                            searchTerm={searchTerm} setSearchTerm={setSearchTerm}
-                            onNavigateToAssetHistory={(asset) => navigate(`/asset/${asset.id}`)}
-                            onNavigateToInspection={(asset) => navigate(`/asset/${asset.id}/inspect`)}
-                        />
-                    } />
+                <main>
+                    <AnimatePresence mode="wait">
+                        <motion.div
+                            key={location.pathname}
+                            variants={pageVariants}
+                            initial="initial"
+                            animate="animate"
+                            exit="exit"
+                        >
+                            <Routes location={location}>
+                                <Route path="/" element={
+                                    <AssetList
+                                        userRole={userRole}
+                                        handleAddAsset={handleAddAsset}
+                                        onBulkAddAssets={handleBulkAddAssets}
+                                        loading={loading}
+                                        newAssetName={newAssetName} setNewAssetName={setNewAssetName}
+                                        newAssetLocation={newAssetLocation} setNewAssetLocation={setNewAssetLocation}
+                                        newAssetDescription={newAssetDescription} setNewAssetDescription={setNewAssetDescription}
+                                        newAssetTag={newAssetTag} setNewAssetTag={setNewAssetTag}
+                                        newAssetCriticality={newAssetCriticality} setNewAssetCriticality={setNewAssetCriticality}
+                                        filteredAssets={filteredAssets}
+                                        searchTerm={searchTerm} setSearchTerm={setSearchTerm}
+                                        onNavigateToAssetHistory={(asset) => navigate(`/asset/${asset.id}`)}
+                                        onNavigateToInspection={(asset) => navigate(`/asset/${asset.id}/inspect`)}
+                                    />
+                                } />
 
-                    {userRole === 'admin' && <Route path="/dashboard" element={
-                        <Dashboard
-                            assets={assets}
-                            latestInspections={latestInspections}
-                            allInspections={allInspections}
-                            onInspectAssetHistory={(asset) => navigate(`/asset/${asset.id}`)}
-                        />
-                    } />}
+                                {userRole === 'admin' && <Route path="/dashboard" element={
+                                    <Dashboard
+                                        assets={assets}
+                                        latestInspections={latestInspections}
+                                        allInspections={allInspections}
+                                        onInspectAssetHistory={(asset) => navigate(`/asset/${asset.id}`)}
+                                    />
+                                } />}
 
-                    {userRole === 'admin' && <Route path="/users" element={
-                        <UserManagement
-                            users={users}
-                            onRoleChange={handleRoleChange}
-                            onUserCreated={handleUserCreated}
-                        />
-                    } />}
+                                {userRole === 'admin' && <Route path="/users" element={
+                                    <UserManagement
+                                        users={users}
+                                        onRoleChange={handleRoleChange}
+                                        onUserCreated={handleUserCreated}
+                                    />
+                                } />}
 
-                    <Route path="/asset/:assetId" element={
-                        <AssetHistoryPage assets={assets} db={db} appId={APP_ID} userRole={userRole} />
-                    } />
+                                <Route path="/asset/:assetId" element={
+                                    <AssetHistoryPage assets={assets} db={db} appId={APP_ID} userRole={userRole} />
+                                } />
 
-                    <Route path="/asset/:assetId/inspect" element={
-                        <InspectionPage assets={assets} onSave={handleSaveInspection} loading={loading} />
-                    } />
-                </Routes>
-            </main>
+                                <Route path="/asset/:assetId/inspect" element={
+                                    <InspectionPage assets={assets} onSave={handleSaveInspection} loading={loading} />
+                                } />
+                            </Routes>
+                        </motion.div>
+                    </AnimatePresence>
+                </main>
 
-            <footer className="mt-8 pt-4 border-t border-gray-700 text-center text-xs text-gray-500">
-                Aplicación PIA - Impulsada por React y Firestore
-            </footer>
+                <footer className="mt-12 pt-6 border-t border-white/5 text-center">
+                    <p className="text-xs text-gray-600">
+                        PIA App v1.0 - Impulsada por React, Firebase y Tailwind CSS
+                    </p>
+                </footer>
+            </div>
         </div>
     );
 };
 
 export default App;
-
-
-
-
-
-
-
-
-
-
-
