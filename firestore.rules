@@ -35,6 +35,12 @@ service cloud.firestore {
           && data.status is string;
     }
 
+    function isStatusUpdateOnly() {
+      // Permite a cualquier usuario autenticado actualizar solo estado y fecha.
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'lastInspectionDate'])
+          && request.resource.data.status is string;
+    }
+
     function isValidInspection() {
         let data = request.resource.data;
         return data.keys().hasAll(['assetId', 'inspectorUserId', 'date', 'results', 'overallStatus'])
@@ -66,8 +72,11 @@ service cloud.firestore {
       match /assets/{assetId} {
         // Cualquier usuario autenticado puede leer los activos.
         allow read: if isSignedIn();
-        // Solo los administradores pueden crear, actualizar o borrar activos.
-        allow write: if isAppAdmin(appId) && (!request.resource.data.keys().hasAny(['createdAt']) || isValidAsset());
+        // Solo los administradores pueden crear o borrar activos.
+        allow create, delete: if isAppAdmin(appId) && isValidAsset();
+        // Admin puede actualizar todo; tecnicos solo estado/fecha.
+        allow update: if (isAppAdmin(appId) && (!request.resource.data.keys().hasAny(['createdAt']) || isValidAsset()))
+          || (isSignedIn() && isStatusUpdateOnly());
       }
 
       // Inspecciones de los activos.

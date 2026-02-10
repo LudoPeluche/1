@@ -208,155 +208,377 @@ const AssetHistory = ({ db, appId, asset, onBack, onInspect }) => {
     const [selectedInspection, setSelectedInspection] = useState(null);
     const [loadingHistory, setLoadingHistory] = useState(true);
 
-    // PDF Download Handler (keeping original logic)
+    // PDF Download Handler - Professional Design
     const handleDownloadPdf = async () => {
         if (!selectedInspection) return;
         const docPdf = new jsPDF();
 
         const COLORS = {
-            PRIMARY: [30, 41, 59],
-            SECONDARY: [59, 130, 246],
-            ACCENT_GREEN: [16, 185, 129],
-            ACCENT_RED: [239, 68, 68],
-            BG_SECTION: [51, 65, 85],
-            TEXT_WHITE: [255, 255, 255],
-            TEXT_DARK: [30, 41, 59],
-            TEXT_GRAY: [100, 116, 139],
-            ALERT_BG: [254, 226, 226],
+            PRIMARY: [15, 23, 42],
+            PRIMARY_LIGHT: [30, 41, 59],
+            ACCENT: [37, 99, 235],
+            ACCENT_LIGHT: [219, 234, 254],
+            GREEN: [5, 150, 105],
+            GREEN_LIGHT: [209, 250, 229],
+            GREEN_BG: [240, 253, 244],
+            RED: [220, 38, 38],
+            RED_LIGHT: [254, 226, 226],
+            AMBER: [217, 119, 6],
+            AMBER_LIGHT: [254, 243, 199],
+            SECTION_BG: [248, 250, 252],
+            BORDER: [226, 232, 240],
+            TEXT_PRIMARY: [15, 23, 42],
+            TEXT_SECONDARY: [71, 85, 105],
+            TEXT_MUTED: [148, 163, 184],
+            WHITE: [255, 255, 255],
+            DIVIDER: [203, 213, 225],
         };
 
-        const MARGIN = 14;
+        const MARGIN = 16;
         const PAGE_WIDTH = docPdf.internal.pageSize.getWidth();
         const PAGE_HEIGHT = docPdf.internal.pageSize.getHeight();
         const CONTENT_WIDTH = PAGE_WIDTH - (MARGIN * 2);
         let y = 0;
 
         const checkPageBreak = (neededHeight) => {
-            if (y + neededHeight > PAGE_HEIGHT - MARGIN) {
+            if (y + neededHeight > PAGE_HEIGHT - 20) {
                 docPdf.addPage();
-                drawHeader();
-                y = 45;
+                drawPageHeader();
+                y = 28;
             }
         };
 
-        const drawSectionTitle = (title) => {
-            checkPageBreak(15);
-            docPdf.setFillColor(...COLORS.BG_SECTION);
-            docPdf.roundedRect(MARGIN, y, CONTENT_WIDTH, 8, 2, 2, 'F');
-            docPdf.setTextColor(...COLORS.TEXT_WHITE);
+        // Thin header for continuation pages
+        const drawPageHeader = () => {
+            docPdf.setFillColor(...COLORS.PRIMARY);
+            docPdf.rect(0, 0, PAGE_WIDTH, 18, 'F');
+            docPdf.setFillColor(...COLORS.ACCENT);
+            docPdf.rect(0, 18, PAGE_WIDTH, 1, 'F');
+            docPdf.setTextColor(...COLORS.WHITE);
+            docPdf.setFontSize(9);
+            docPdf.setFont("helvetica", "bold");
+            docPdf.text("PIA", MARGIN, 12);
+            docPdf.setFont("helvetica", "normal");
+            docPdf.setFontSize(8);
+            docPdf.text("Reporte de Inspeccion", MARGIN + 14, 12);
+            docPdf.text(asset.name || "", PAGE_WIDTH - MARGIN, 12, { align: "right" });
+        };
+
+        // Full header for page 1
+        const drawMainHeader = () => {
+            // Dark background
+            docPdf.setFillColor(...COLORS.PRIMARY);
+            docPdf.rect(0, 0, PAGE_WIDTH, 44, 'F');
+            // Accent stripe
+            docPdf.setFillColor(...COLORS.ACCENT);
+            docPdf.rect(0, 44, PAGE_WIDTH, 1.5, 'F');
+
+            // PIA logo text
+            docPdf.setTextColor(...COLORS.WHITE);
+            docPdf.setFontSize(26);
+            docPdf.setFont("helvetica", "bold");
+            docPdf.text("PIA", MARGIN, 18);
+
+            // Subtitle
+            docPdf.setFontSize(9);
+            docPdf.setFont("helvetica", "normal");
+            docPdf.setTextColor(148, 163, 184);
+            docPdf.text("Predictive Inspection App", MARGIN, 25);
+
+            // Right side - report type
+            docPdf.setTextColor(...COLORS.WHITE);
             docPdf.setFontSize(11);
             docPdf.setFont("helvetica", "bold");
-            docPdf.text(title, MARGIN + 4, y + 5.5);
+            docPdf.text("REPORTE DE INSPECCION", PAGE_WIDTH - MARGIN, 16, { align: "right" });
+
+            // Date and time
+            docPdf.setFontSize(9);
+            docPdf.setFont("helvetica", "normal");
+            docPdf.setTextColor(148, 163, 184);
+            const dateStr = selectedInspection.date?.toLocaleDateString('es-MX', {
+                year: 'numeric', month: 'long', day: 'numeric'
+            }) || 'N/A';
+            const timeStr = selectedInspection.date?.toLocaleTimeString('es-MX', {
+                hour: '2-digit', minute: '2-digit'
+            }) || '';
+            docPdf.text(dateStr, PAGE_WIDTH - MARGIN, 24, { align: "right" });
+            if (timeStr) {
+                docPdf.text(timeStr + " hrs", PAGE_WIDTH - MARGIN, 30, { align: "right" });
+            }
+
+            // ID reference line
+            const inspId = selectedInspection.id ? selectedInspection.id.slice(0, 8).toUpperCase() : '';
+            if (inspId) {
+                docPdf.setFontSize(7);
+                docPdf.setTextColor(100, 116, 139);
+                docPdf.text(`REF: ${inspId}`, PAGE_WIDTH - MARGIN, 38, { align: "right" });
+            }
+        };
+
+        const drawSectionTitle = (title, icon) => {
+            checkPageBreak(16);
+            // Light background bar with left accent
+            docPdf.setFillColor(...COLORS.SECTION_BG);
+            docPdf.roundedRect(MARGIN, y, CONTENT_WIDTH, 9, 1.5, 1.5, 'F');
+            docPdf.setFillColor(...COLORS.ACCENT);
+            docPdf.rect(MARGIN, y, 2.5, 9, 'F');
+
+            docPdf.setTextColor(...COLORS.PRIMARY);
+            docPdf.setFontSize(9);
+            docPdf.setFont("helvetica", "bold");
+            const displayTitle = icon ? `${icon}  ${title}` : title;
+            docPdf.text(displayTitle, MARGIN + 7, y + 6.2);
             y += 14;
         };
 
-        const drawHeader = () => {
-            docPdf.setFillColor(...COLORS.PRIMARY);
-            docPdf.rect(0, 0, PAGE_WIDTH, 40, 'F');
-            docPdf.setTextColor(...COLORS.TEXT_WHITE);
-            docPdf.setFontSize(22);
-            docPdf.setFont("helvetica", "bold");
-            docPdf.text("PIA", MARGIN, 20);
-            docPdf.setFontSize(12);
-            docPdf.setFont("helvetica", "normal");
-            docPdf.text("Predictive Inspection App", MARGIN, 26);
-            docPdf.setFontSize(10);
-            docPdf.text("REPORTE DE INSPECCION", PAGE_WIDTH - MARGIN, 15, { align: "right" });
-            docPdf.setFontSize(9);
-            const dateStr = selectedInspection.date?.toLocaleDateString() || 'N/A';
-            const timeStr = selectedInspection.date?.toLocaleTimeString() || '';
-            docPdf.text(`Fecha: ${dateStr} ${timeStr}`, PAGE_WIDTH - MARGIN, 22, { align: "right" });
+        const drawDivider = () => {
+            docPdf.setDrawColor(...COLORS.DIVIDER);
+            docPdf.setLineWidth(0.3);
+            docPdf.line(MARGIN, y, PAGE_WIDTH - MARGIN, y);
+            y += 6;
         };
 
-        drawHeader();
-        y = 50;
+        // ======= PAGE 1 =======
+        drawMainHeader();
+        y = 52;
 
-        docPdf.setTextColor(...COLORS.SECONDARY);
-        docPdf.setFontSize(14);
+        // --- Asset Info Card ---
+        const cardY = y;
+        docPdf.setFillColor(...COLORS.WHITE);
+        docPdf.setDrawColor(...COLORS.BORDER);
+        docPdf.setLineWidth(0.4);
+        const descLines = asset.description ? docPdf.splitTextToSize(asset.description, CONTENT_WIDTH - 16) : [];
+        const cardHeight = 30 + (descLines.length > 0 ? descLines.length * 4.5 + 6 : 0);
+        docPdf.roundedRect(MARGIN, cardY, CONTENT_WIDTH, cardHeight, 2, 2, 'FD');
+        // Left accent bar on card
+        docPdf.setFillColor(...COLORS.ACCENT);
+        docPdf.rect(MARGIN, cardY, 3, cardHeight, 'F');
+
+        y = cardY + 8;
+        docPdf.setTextColor(...COLORS.TEXT_PRIMARY);
+        docPdf.setFontSize(15);
         docPdf.setFont("helvetica", "bold");
-        docPdf.text(asset.name || "Activo Sin Nombre", MARGIN, y);
-        y += 7;
+        docPdf.text(asset.name || "Activo Sin Nombre", MARGIN + 10, y);
 
-        docPdf.setFontSize(10);
-        docPdf.setTextColor(...COLORS.TEXT_GRAY);
+        // Criticality badge
+        const critMap = {
+            'A': { label: 'CRITICA', bg: COLORS.RED, bgLight: COLORS.RED_LIGHT },
+            'Alta': { label: 'CRITICA', bg: COLORS.RED, bgLight: COLORS.RED_LIGHT },
+            'B': { label: 'IMPORTANTE', bg: COLORS.AMBER, bgLight: COLORS.AMBER_LIGHT },
+            'Media': { label: 'IMPORTANTE', bg: COLORS.AMBER, bgLight: COLORS.AMBER_LIGHT },
+            'C': { label: 'MODERADA', bg: COLORS.ACCENT, bgLight: COLORS.ACCENT_LIGHT },
+            'D': { label: 'BAJA', bg: COLORS.GREEN, bgLight: COLORS.GREEN_LIGHT },
+        };
+        const crit = critMap[asset.criticality] || { label: asset.criticality || '?', bg: COLORS.TEXT_MUTED, bgLight: COLORS.SECTION_BG };
+        const badgeLabel = `${crit.label}`;
+        docPdf.setFontSize(7);
+        const badgeW = docPdf.getTextWidth(badgeLabel) + 8;
+        const badgeX = PAGE_WIDTH - MARGIN - badgeW - 6;
+        docPdf.setFillColor(...crit.bgLight);
+        docPdf.roundedRect(badgeX, y - 4.5, badgeW, 6.5, 1.5, 1.5, 'F');
+        docPdf.setTextColor(...crit.bg);
+        docPdf.setFont("helvetica", "bold");
+        docPdf.text(badgeLabel, badgeX + badgeW / 2, y - 0.5, { align: 'center' });
+
+        y += 6;
+        docPdf.setFontSize(9);
+        docPdf.setTextColor(...COLORS.TEXT_SECONDARY);
         docPdf.setFont("helvetica", "normal");
-        docPdf.text(`${asset.tag || 'N/A'} | ${asset.location || 'Ubicacion Desconocida'}`, MARGIN, y);
+        const tagLoc = [];
+        if (asset.tag) tagLoc.push(asset.tag);
+        if (asset.location) tagLoc.push(asset.location);
+        docPdf.text(tagLoc.join('  |  ') || 'Sin informacion de ubicacion', MARGIN + 10, y);
 
-        const critValues = { text: asset.criticality || '?', bg: COLORS.ACCENT_GREEN };
-        if (asset.criticality === 'A' || asset.criticality === 'Alta') critValues.bg = COLORS.ACCENT_RED;
-        else if (asset.criticality === 'B' || asset.criticality === 'Media') critValues.bg = COLORS.SECONDARY;
-
-        const badgeWidth = 20;
-        docPdf.setFillColor(...critValues.bg);
-        docPdf.roundedRect(PAGE_WIDTH - MARGIN - badgeWidth, y - 4, badgeWidth, 6, 1, 1, 'F');
-        docPdf.setTextColor(...COLORS.TEXT_WHITE);
-        docPdf.setFontSize(8);
-        docPdf.setFont("helvetica", "bold");
-        docPdf.text(`Criticidad ${critValues.text}`, PAGE_WIDTH - MARGIN - (badgeWidth/2), y, { align: 'center' });
-        y += 10;
-
-        if (asset.description) {
-            docPdf.setTextColor(...COLORS.TEXT_DARK);
-            docPdf.setFontSize(10);
+        if (descLines.length > 0) {
+            y += 8;
+            docPdf.setTextColor(...COLORS.TEXT_SECONDARY);
+            docPdf.setFontSize(9);
             docPdf.setFont("helvetica", "italic");
-            const descLines = docPdf.splitTextToSize(asset.description, CONTENT_WIDTH);
-            docPdf.text(descLines, MARGIN, y);
-            y += (descLines.length * 5) + 5;
+            docPdf.text(descLines, MARGIN + 10, y);
+            y += descLines.length * 4.5;
         }
 
-        drawSectionTitle("RESULTADOS: ALERTAS Y HALLAZGOS");
+        y = cardY + cardHeight + 10;
 
-        const alerts = (selectedInspection.results || []).filter(
+        // --- Summary Stats Bar ---
+        const allResults = selectedInspection.results || [];
+        const alerts = allResults.filter(
             r => r.answer === 'No' || r.status === 'ALERT' || r.cumple === false
         );
+        const okItems = allResults.filter(
+            r => (r.answer === 'Si' || r.answer === 'Yes' || r.status === 'OK' || r.cumple === true) &&
+                 !(r.answer === 'No' || r.status === 'ALERT' || r.cumple === false)
+        );
+        const totalChecked = allResults.length;
+        const alertCount = alerts.length;
+        const okCount = okItems.length;
 
-        if (alerts.length === 0) {
-            docPdf.setTextColor(...COLORS.ACCENT_GREEN);
-            docPdf.setFontSize(11);
-            docPdf.setFont("helvetica", "bold");
-            docPdf.text("No se detectaron anomalias. El activo se encuentra en buen estado.", MARGIN, y);
-            y += 10;
-        } else {
+        checkPageBreak(22);
+        // Stats container
+        docPdf.setFillColor(...COLORS.SECTION_BG);
+        docPdf.roundedRect(MARGIN, y, CONTENT_WIDTH, 18, 2, 2, 'F');
+
+        const statWidth = CONTENT_WIDTH / 3;
+        const statY = y + 7;
+
+        // Stat 1: Total items
+        docPdf.setFontSize(13);
+        docPdf.setFont("helvetica", "bold");
+        docPdf.setTextColor(...COLORS.ACCENT);
+        docPdf.text(`${totalChecked}`, MARGIN + statWidth * 0.5, statY, { align: 'center' });
+        docPdf.setFontSize(7);
+        docPdf.setFont("helvetica", "normal");
+        docPdf.setTextColor(...COLORS.TEXT_MUTED);
+        docPdf.text("ITEMS EVALUADOS", MARGIN + statWidth * 0.5, statY + 6, { align: 'center' });
+
+        // Vertical divider
+        docPdf.setDrawColor(...COLORS.DIVIDER);
+        docPdf.setLineWidth(0.3);
+        docPdf.line(MARGIN + statWidth, y + 3, MARGIN + statWidth, y + 15);
+
+        // Stat 2: OK items
+        docPdf.setFontSize(13);
+        docPdf.setFont("helvetica", "bold");
+        docPdf.setTextColor(...COLORS.GREEN);
+        docPdf.text(`${okCount}`, MARGIN + statWidth * 1.5, statY, { align: 'center' });
+        docPdf.setFontSize(7);
+        docPdf.setFont("helvetica", "normal");
+        docPdf.setTextColor(...COLORS.TEXT_MUTED);
+        docPdf.text("CONFORME", MARGIN + statWidth * 1.5, statY + 6, { align: 'center' });
+
+        // Vertical divider
+        docPdf.line(MARGIN + statWidth * 2, y + 3, MARGIN + statWidth * 2, y + 15);
+
+        // Stat 3: Alerts
+        docPdf.setFontSize(13);
+        docPdf.setFont("helvetica", "bold");
+        docPdf.setTextColor(...(alertCount > 0 ? COLORS.RED : COLORS.GREEN));
+        docPdf.text(`${alertCount}`, MARGIN + statWidth * 2.5, statY, { align: 'center' });
+        docPdf.setFontSize(7);
+        docPdf.setFont("helvetica", "normal");
+        docPdf.setTextColor(...COLORS.TEXT_MUTED);
+        docPdf.text("ALERTAS", MARGIN + statWidth * 2.5, statY + 6, { align: 'center' });
+
+        y += 26;
+
+        // --- Alerts Section ---
+        if (alerts.length > 0) {
+            drawSectionTitle("ALERTAS Y HALLAZGOS");
+
             alerts.forEach(alert => {
                 const alertText = alert.text || alert.detail || "Alerta reportada";
-                const label = "ALERTA:";
-                const contentLines = docPdf.splitTextToSize(alertText, CONTENT_WIDTH - 35);
-                const textLineHeight = 6;
-                const boxHeight = Math.max(16, 10 + contentLines.length * textLineHeight);
+                const contentLines = docPdf.splitTextToSize(alertText, CONTENT_WIDTH - 18);
+                const textLineHeight = 5;
+                const boxHeight = Math.max(12, 6 + contentLines.length * textLineHeight);
 
-                checkPageBreak(boxHeight + 4);
+                checkPageBreak(boxHeight + 5);
 
-                docPdf.setFillColor(...COLORS.ALERT_BG);
-                docPdf.setDrawColor(...COLORS.ACCENT_RED);
-                docPdf.rect(MARGIN, y, CONTENT_WIDTH, boxHeight, 'FD');
+                // Alert card with left red border
+                docPdf.setFillColor(...COLORS.RED_LIGHT);
+                docPdf.roundedRect(MARGIN, y, CONTENT_WIDTH, boxHeight, 1.5, 1.5, 'F');
+                docPdf.setFillColor(...COLORS.RED);
+                docPdf.rect(MARGIN, y, 2.5, boxHeight, 'F');
 
-                docPdf.setTextColor(...COLORS.ACCENT_RED);
-                docPdf.setFontSize(10);
+                // Alert icon indicator
+                docPdf.setFontSize(7);
                 docPdf.setFont("helvetica", "bold");
-                docPdf.text(label, MARGIN + 4, y + 10);
+                docPdf.setTextColor(...COLORS.RED);
+                docPdf.text("!", MARGIN + 8, y + boxHeight / 2 + 1, { align: 'center' });
 
-                docPdf.setTextColor(...COLORS.TEXT_DARK);
+                // Alert text
+                docPdf.setTextColor(...COLORS.TEXT_PRIMARY);
+                docPdf.setFontSize(9);
                 docPdf.setFont("helvetica", "normal");
                 contentLines.forEach((line, idx) => {
-                    docPdf.text(line, MARGIN + 30, y + 10 + idx * textLineHeight);
+                    docPdf.text(line, MARGIN + 13, y + 5 + idx * textLineHeight);
                 });
 
-                y += boxHeight + 6;
+                y += boxHeight + 4;
             });
+            y += 4;
         }
-        y += 5;
 
+        // --- OK Items Section ---
+        if (okItems.length > 0) {
+            drawSectionTitle("ITEMS CONFORMES");
+
+            // Compact 2-column layout for OK items
+            const colWidth = (CONTENT_WIDTH - 6) / 2;
+            let col = 0;
+            let rowY = y;
+
+            okItems.forEach((item, idx) => {
+                const itemText = item.text || item.detail || "Item conforme";
+                const truncText = itemText.length > 55 ? itemText.substring(0, 52) + '...' : itemText;
+
+                if (col === 0) {
+                    checkPageBreak(8);
+                    rowY = y;
+                }
+
+                const xOffset = MARGIN + col * (colWidth + 6);
+
+                // Small green dot
+                docPdf.setFillColor(...COLORS.GREEN);
+                docPdf.roundedRect(xOffset + 2, rowY + 1.3, 2.4, 2.4, 1.2, 1.2, 'F');
+
+                // Item text
+                docPdf.setTextColor(...COLORS.TEXT_SECONDARY);
+                docPdf.setFontSize(8);
+                docPdf.setFont("helvetica", "normal");
+                docPdf.text(truncText, xOffset + 7, rowY + 3.5);
+
+                if (col === 1) {
+                    y = rowY + 7;
+                    col = 0;
+                } else {
+                    col = 1;
+                }
+            });
+            if (col === 1) y = rowY + 7;
+            y += 6;
+        }
+
+        // --- No alerts message ---
+        if (alerts.length === 0 && totalChecked > 0) {
+            checkPageBreak(18);
+            docPdf.setFillColor(...COLORS.GREEN_BG);
+            docPdf.roundedRect(MARGIN, y, CONTENT_WIDTH, 14, 2, 2, 'F');
+            docPdf.setFillColor(...COLORS.GREEN);
+            docPdf.rect(MARGIN, y, 2.5, 14, 'F');
+            docPdf.setTextColor(...COLORS.GREEN);
+            docPdf.setFontSize(10);
+            docPdf.setFont("helvetica", "bold");
+            docPdf.text("Sin anomalias detectadas", MARGIN + 10, y + 6);
+            docPdf.setFontSize(8);
+            docPdf.setFont("helvetica", "normal");
+            docPdf.setTextColor(...COLORS.TEXT_SECONDARY);
+            docPdf.text("Todos los items evaluados se encuentran dentro de los parametros aceptables.", MARGIN + 10, y + 11);
+            y += 20;
+        }
+
+        // --- Observations ---
         if (selectedInspection.notes) {
             drawSectionTitle("OBSERVACIONES Y COMENTARIOS");
-            docPdf.setTextColor(...COLORS.TEXT_DARK);
-            docPdf.setFontSize(10);
+            checkPageBreak(16);
+
+            // Styled note box
+            const noteLines = docPdf.splitTextToSize(selectedInspection.notes, CONTENT_WIDTH - 16);
+            const noteBoxH = Math.max(14, 8 + noteLines.length * 4.5);
+            docPdf.setFillColor(...COLORS.SECTION_BG);
+            docPdf.roundedRect(MARGIN, y, CONTENT_WIDTH, noteBoxH, 1.5, 1.5, 'F');
+            docPdf.setDrawColor(...COLORS.BORDER);
+            docPdf.setLineWidth(0.3);
+            docPdf.roundedRect(MARGIN, y, CONTENT_WIDTH, noteBoxH, 1.5, 1.5, 'S');
+
+            docPdf.setTextColor(...COLORS.TEXT_PRIMARY);
+            docPdf.setFontSize(9);
             docPdf.setFont("helvetica", "normal");
-            const noteLines = docPdf.splitTextToSize(selectedInspection.notes, CONTENT_WIDTH);
-            checkPageBreak(noteLines.length * 5);
-            docPdf.text(noteLines, MARGIN, y);
-            y += (noteLines.length * 5) + 10;
+            docPdf.text(noteLines, MARGIN + 8, y + 6);
+            y += noteBoxH + 8;
         }
 
+        // --- Photos ---
         if (selectedInspection.photoURLs && selectedInspection.photoURLs.length > 0) {
             drawSectionTitle("EVIDENCIA FOTOGRAFICA");
 
@@ -379,43 +601,64 @@ const AssetHistory = ({ db, appId, asset, onBack, onInspect }) => {
 
             for (let i = 0; i < selectedInspection.photoURLs.length; i++) {
                 const url = selectedInspection.photoURLs[i];
-                checkPageBreak(60);
-
-                docPdf.setFontSize(9);
-                docPdf.setTextColor(...COLORS.TEXT_GRAY);
-                docPdf.text(`Imagen ${i + 1}:`, MARGIN, y);
-                y += 5;
+                checkPageBreak(70);
 
                 try {
                     const imgData = await getImageData(url);
                     if (imgData) {
                         const imgProps = docPdf.getImageProperties(imgData);
                         const imgRatio = imgProps.height / imgProps.width;
-                        const imgWidth = 80;
+                        const imgWidth = Math.min(90, CONTENT_WIDTH * 0.5);
                         const imgHeight = imgWidth * imgRatio;
+                        const totalH = imgHeight + 10;
 
-                        docPdf.addImage(imgData, 'JPEG', MARGIN, y, imgWidth, imgHeight);
-                        docPdf.link(MARGIN, y, imgWidth, imgHeight, { url: url });
-                        y += imgHeight + 10;
+                        checkPageBreak(totalH + 10);
+
+                        // Image container with border
+                        docPdf.setDrawColor(...COLORS.BORDER);
+                        docPdf.setLineWidth(0.3);
+                        docPdf.roundedRect(MARGIN, y, imgWidth + 6, imgHeight + 12, 2, 2, 'S');
+
+                        docPdf.addImage(imgData, 'JPEG', MARGIN + 3, y + 3, imgWidth, imgHeight);
+                        docPdf.link(MARGIN + 3, y + 3, imgWidth, imgHeight, { url: url });
+
+                        // Caption
+                        docPdf.setFontSize(7);
+                        docPdf.setTextColor(...COLORS.TEXT_MUTED);
+                        docPdf.setFont("helvetica", "normal");
+                        docPdf.text(`Foto ${i + 1} de ${selectedInspection.photoURLs.length}`, MARGIN + 3, y + imgHeight + 9);
+
+                        y += imgHeight + 18;
                     } else {
-                        docPdf.setTextColor(...COLORS.SECONDARY);
-                        docPdf.textWithLink("Ver imagen en navegador", MARGIN, y, { url: url });
-                        y += 10;
+                        docPdf.setTextColor(...COLORS.ACCENT);
+                        docPdf.setFontSize(9);
+                        docPdf.textWithLink(`Ver foto ${i + 1} en navegador`, MARGIN, y, { url: url });
+                        y += 8;
                     }
                 } catch {
-                    docPdf.setTextColor(...COLORS.SECONDARY);
-                    docPdf.textWithLink("Ver imagen en navegador", MARGIN, y, { url: url });
-                    y += 10;
+                    docPdf.setTextColor(...COLORS.ACCENT);
+                    docPdf.setFontSize(9);
+                    docPdf.textWithLink(`Ver foto ${i + 1} en navegador`, MARGIN, y, { url: url });
+                    y += 8;
                 }
             }
         }
 
+        // --- Footer on all pages ---
         const pageCount = docPdf.internal.getNumberOfPages();
-        for(let i = 1; i <= pageCount; i++) {
+        for (let i = 1; i <= pageCount; i++) {
             docPdf.setPage(i);
-            docPdf.setFontSize(8);
-            docPdf.setTextColor(...COLORS.TEXT_GRAY);
-            docPdf.text(`Pagina ${i} de ${pageCount} - Generado via PIA`, PAGE_WIDTH / 2, PAGE_HEIGHT - 5, { align: 'center' });
+            // Footer line
+            docPdf.setDrawColor(...COLORS.DIVIDER);
+            docPdf.setLineWidth(0.3);
+            docPdf.line(MARGIN, PAGE_HEIGHT - 12, PAGE_WIDTH - MARGIN, PAGE_HEIGHT - 12);
+            // Footer text left
+            docPdf.setFontSize(7);
+            docPdf.setTextColor(...COLORS.TEXT_MUTED);
+            docPdf.setFont("helvetica", "normal");
+            docPdf.text("Generado por PIA - Predictive Inspection App", MARGIN, PAGE_HEIGHT - 7);
+            // Page number right
+            docPdf.text(`Pagina ${i} de ${pageCount}`, PAGE_WIDTH - MARGIN, PAGE_HEIGHT - 7, { align: 'right' });
         }
 
         const dateSlug = selectedInspection.date ? selectedInspection.date.toISOString().slice(0, 10) : 'sin-fecha';
