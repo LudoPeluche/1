@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { doc, onSnapshot, collection, query, where, orderBy, deleteDoc } from 'firebase/firestore';
 import jsPDF from 'jspdf';
+import QRCode from 'qrcode';
 import {
     ArrowLeft,
     Trash2,
@@ -208,12 +209,12 @@ const AssetHistory = ({ db, appId, asset, onBack, onInspect }) => {
     const [selectedInspection, setSelectedInspection] = useState(null);
     const [loadingHistory, setLoadingHistory] = useState(true);
 
-    // PDF Download Handler - Professional Design
+    // PDF Download Handler - Professional Design v3
     const handleDownloadPdf = async () => {
         if (!selectedInspection) return;
         const docPdf = new jsPDF();
 
-        const COLORS = {
+        const C = {
             PRIMARY: [15, 23, 42],
             PRIMARY_LIGHT: [30, 41, 59],
             ACCENT: [37, 99, 235],
@@ -232,179 +233,19 @@ const AssetHistory = ({ db, appId, asset, onBack, onInspect }) => {
             TEXT_MUTED: [148, 163, 184],
             WHITE: [255, 255, 255],
             DIVIDER: [203, 213, 225],
+            TABLE_HEADER: [241, 245, 249],
+            TABLE_STRIPE: [249, 250, 251],
         };
 
-        const MARGIN = 16;
-        const PAGE_WIDTH = docPdf.internal.pageSize.getWidth();
-        const PAGE_HEIGHT = docPdf.internal.pageSize.getHeight();
-        const CONTENT_WIDTH = PAGE_WIDTH - (MARGIN * 2);
+        const M = 16; // margin
+        const PW = docPdf.internal.pageSize.getWidth();
+        const PH = docPdf.internal.pageSize.getHeight();
+        const CW = PW - (M * 2);
         let y = 0;
 
-        const checkPageBreak = (neededHeight) => {
-            if (y + neededHeight > PAGE_HEIGHT - 20) {
-                docPdf.addPage();
-                drawPageHeader();
-                y = 28;
-            }
-        };
-
-        // Thin header for continuation pages
-        const drawPageHeader = () => {
-            docPdf.setFillColor(...COLORS.PRIMARY);
-            docPdf.rect(0, 0, PAGE_WIDTH, 18, 'F');
-            docPdf.setFillColor(...COLORS.ACCENT);
-            docPdf.rect(0, 18, PAGE_WIDTH, 1, 'F');
-            docPdf.setTextColor(...COLORS.WHITE);
-            docPdf.setFontSize(9);
-            docPdf.setFont("helvetica", "bold");
-            docPdf.text("PIA", MARGIN, 12);
-            docPdf.setFont("helvetica", "normal");
-            docPdf.setFontSize(8);
-            docPdf.text("Reporte de Inspeccion", MARGIN + 14, 12);
-            docPdf.text(asset.name || "", PAGE_WIDTH - MARGIN, 12, { align: "right" });
-        };
-
-        // Full header for page 1
-        const drawMainHeader = () => {
-            // Dark background
-            docPdf.setFillColor(...COLORS.PRIMARY);
-            docPdf.rect(0, 0, PAGE_WIDTH, 44, 'F');
-            // Accent stripe
-            docPdf.setFillColor(...COLORS.ACCENT);
-            docPdf.rect(0, 44, PAGE_WIDTH, 1.5, 'F');
-
-            // PIA logo text
-            docPdf.setTextColor(...COLORS.WHITE);
-            docPdf.setFontSize(26);
-            docPdf.setFont("helvetica", "bold");
-            docPdf.text("PIA", MARGIN, 18);
-
-            // Subtitle
-            docPdf.setFontSize(9);
-            docPdf.setFont("helvetica", "normal");
-            docPdf.setTextColor(148, 163, 184);
-            docPdf.text("Predictive Inspection App", MARGIN, 25);
-
-            // Right side - report type
-            docPdf.setTextColor(...COLORS.WHITE);
-            docPdf.setFontSize(11);
-            docPdf.setFont("helvetica", "bold");
-            docPdf.text("REPORTE DE INSPECCION", PAGE_WIDTH - MARGIN, 16, { align: "right" });
-
-            // Date and time
-            docPdf.setFontSize(9);
-            docPdf.setFont("helvetica", "normal");
-            docPdf.setTextColor(148, 163, 184);
-            const dateStr = selectedInspection.date?.toLocaleDateString('es-MX', {
-                year: 'numeric', month: 'long', day: 'numeric'
-            }) || 'N/A';
-            const timeStr = selectedInspection.date?.toLocaleTimeString('es-MX', {
-                hour: '2-digit', minute: '2-digit'
-            }) || '';
-            docPdf.text(dateStr, PAGE_WIDTH - MARGIN, 24, { align: "right" });
-            if (timeStr) {
-                docPdf.text(timeStr + " hrs", PAGE_WIDTH - MARGIN, 30, { align: "right" });
-            }
-
-            // ID reference line
-            const inspId = selectedInspection.id ? selectedInspection.id.slice(0, 8).toUpperCase() : '';
-            if (inspId) {
-                docPdf.setFontSize(7);
-                docPdf.setTextColor(100, 116, 139);
-                docPdf.text(`REF: ${inspId}`, PAGE_WIDTH - MARGIN, 38, { align: "right" });
-            }
-        };
-
-        const drawSectionTitle = (title, icon) => {
-            checkPageBreak(16);
-            // Light background bar with left accent
-            docPdf.setFillColor(...COLORS.SECTION_BG);
-            docPdf.roundedRect(MARGIN, y, CONTENT_WIDTH, 9, 1.5, 1.5, 'F');
-            docPdf.setFillColor(...COLORS.ACCENT);
-            docPdf.rect(MARGIN, y, 2.5, 9, 'F');
-
-            docPdf.setTextColor(...COLORS.PRIMARY);
-            docPdf.setFontSize(9);
-            docPdf.setFont("helvetica", "bold");
-            const displayTitle = icon ? `${icon}  ${title}` : title;
-            docPdf.text(displayTitle, MARGIN + 7, y + 6.2);
-            y += 14;
-        };
-
-        const drawDivider = () => {
-            docPdf.setDrawColor(...COLORS.DIVIDER);
-            docPdf.setLineWidth(0.3);
-            docPdf.line(MARGIN, y, PAGE_WIDTH - MARGIN, y);
-            y += 6;
-        };
-
-        // ======= PAGE 1 =======
-        drawMainHeader();
-        y = 52;
-
-        // --- Asset Info Card ---
-        const cardY = y;
-        docPdf.setFillColor(...COLORS.WHITE);
-        docPdf.setDrawColor(...COLORS.BORDER);
-        docPdf.setLineWidth(0.4);
-        const descLines = asset.description ? docPdf.splitTextToSize(asset.description, CONTENT_WIDTH - 16) : [];
-        const cardHeight = 30 + (descLines.length > 0 ? descLines.length * 4.5 + 6 : 0);
-        docPdf.roundedRect(MARGIN, cardY, CONTENT_WIDTH, cardHeight, 2, 2, 'FD');
-        // Left accent bar on card
-        docPdf.setFillColor(...COLORS.ACCENT);
-        docPdf.rect(MARGIN, cardY, 3, cardHeight, 'F');
-
-        y = cardY + 8;
-        docPdf.setTextColor(...COLORS.TEXT_PRIMARY);
-        docPdf.setFontSize(15);
-        docPdf.setFont("helvetica", "bold");
-        docPdf.text(asset.name || "Activo Sin Nombre", MARGIN + 10, y);
-
-        // Criticality badge
-        const critMap = {
-            'A': { label: 'CRITICA', bg: COLORS.RED, bgLight: COLORS.RED_LIGHT },
-            'Alta': { label: 'CRITICA', bg: COLORS.RED, bgLight: COLORS.RED_LIGHT },
-            'B': { label: 'IMPORTANTE', bg: COLORS.AMBER, bgLight: COLORS.AMBER_LIGHT },
-            'Media': { label: 'IMPORTANTE', bg: COLORS.AMBER, bgLight: COLORS.AMBER_LIGHT },
-            'C': { label: 'MODERADA', bg: COLORS.ACCENT, bgLight: COLORS.ACCENT_LIGHT },
-            'D': { label: 'BAJA', bg: COLORS.GREEN, bgLight: COLORS.GREEN_LIGHT },
-        };
-        const crit = critMap[asset.criticality] || { label: asset.criticality || '?', bg: COLORS.TEXT_MUTED, bgLight: COLORS.SECTION_BG };
-        const badgeLabel = `${crit.label}`;
-        docPdf.setFontSize(7);
-        const badgeW = docPdf.getTextWidth(badgeLabel) + 8;
-        const badgeX = PAGE_WIDTH - MARGIN - badgeW - 6;
-        docPdf.setFillColor(...crit.bgLight);
-        docPdf.roundedRect(badgeX, y - 4.5, badgeW, 6.5, 1.5, 1.5, 'F');
-        docPdf.setTextColor(...crit.bg);
-        docPdf.setFont("helvetica", "bold");
-        docPdf.text(badgeLabel, badgeX + badgeW / 2, y - 0.5, { align: 'center' });
-
-        y += 6;
-        docPdf.setFontSize(9);
-        docPdf.setTextColor(...COLORS.TEXT_SECONDARY);
-        docPdf.setFont("helvetica", "normal");
-        const tagLoc = [];
-        if (asset.tag) tagLoc.push(asset.tag);
-        if (asset.location) tagLoc.push(asset.location);
-        docPdf.text(tagLoc.join('  |  ') || 'Sin informacion de ubicacion', MARGIN + 10, y);
-
-        if (descLines.length > 0) {
-            y += 8;
-            docPdf.setTextColor(...COLORS.TEXT_SECONDARY);
-            docPdf.setFontSize(9);
-            docPdf.setFont("helvetica", "italic");
-            docPdf.text(descLines, MARGIN + 10, y);
-            y += descLines.length * 4.5;
-        }
-
-        y = cardY + cardHeight + 10;
-
-        // --- Summary Stats Bar ---
+        // --- Data prep ---
         const allResults = selectedInspection.results || [];
-        const alerts = allResults.filter(
-            r => r.answer === 'No' || r.status === 'ALERT' || r.cumple === false
-        );
+        const alerts = allResults.filter(r => r.answer === 'No' || r.status === 'ALERT' || r.cumple === false);
         const okItems = allResults.filter(
             r => (r.answer === 'Si' || r.answer === 'Yes' || r.status === 'OK' || r.cumple === true) &&
                  !(r.answer === 'No' || r.status === 'ALERT' || r.cumple === false)
@@ -413,252 +254,632 @@ const AssetHistory = ({ db, appId, asset, onBack, onInspect }) => {
         const alertCount = alerts.length;
         const okCount = okItems.length;
 
-        checkPageBreak(22);
-        // Stats container
-        docPdf.setFillColor(...COLORS.SECTION_BG);
-        docPdf.roundedRect(MARGIN, y, CONTENT_WIDTH, 18, 2, 2, 'F');
+        const dateStr = selectedInspection.date?.toLocaleDateString('es-MX', {
+            year: 'numeric', month: 'long', day: 'numeric'
+        }) || 'N/A';
+        const timeStr = selectedInspection.date?.toLocaleTimeString('es-MX', {
+            hour: '2-digit', minute: '2-digit'
+        }) || '';
+        const inspId = selectedInspection.id ? selectedInspection.id.slice(0, 8).toUpperCase() : 'N/A';
 
-        const statWidth = CONTENT_WIDTH / 3;
-        const statY = y + 7;
+        // Verdict logic
+        let verdict, verdictColor, verdictBg;
+        if (alertCount === 0) {
+            verdict = 'APROBADO';
+            verdictColor = C.GREEN;
+            verdictBg = C.GREEN_LIGHT;
+        } else if (alertCount <= 3) {
+            verdict = 'CON OBSERVACIONES';
+            verdictColor = C.AMBER;
+            verdictBg = C.AMBER_LIGHT;
+        } else {
+            verdict = 'NO APROBADO';
+            verdictColor = C.RED;
+            verdictBg = C.RED_LIGHT;
+        }
 
-        // Stat 1: Total items
-        docPdf.setFontSize(13);
+        // Trend data (reuse component logic)
+        const statusToScorePdf = (s) => (s === 'A' ? 3 : s === 'B' ? 2 : s === 'C' ? 1 : s === 'OK' ? 3 : s === 'ALERT' ? 1 : 0);
+        const sortedHistory = [...historyInspections].sort((a, b) => a.date - b.date);
+        const trendData = sortedHistory.map(i => ({
+            date: i.date,
+            value: statusToScorePdf(i.overallStatus)
+        })).slice(-12);
+
+        // QR Code generation
+        let qrDataUrl = null;
+        try {
+            const appUrl = window.location.origin + `/asset/${asset.id}`;
+            qrDataUrl = await QRCode.toDataURL(appUrl, {
+                width: 200, margin: 1, color: { dark: '#0f172a', light: '#ffffff' }
+            });
+        } catch { /* QR generation failed, skip */ }
+
+        // Logo loading
+        const loadLogo = () => new Promise((resolve) => {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = img.width;
+                canvas.height = img.height;
+                canvas.getContext('2d').drawImage(img, 0, 0);
+                resolve(canvas.toDataURL('image/png'));
+            };
+            img.onerror = () => resolve(null);
+            img.src = '/logo.svg';
+        });
+        const logoData = await loadLogo();
+
+        // Image loader helper
+        const getImageData = (url) => new Promise((resolve) => {
+            const img = new Image();
+            img.crossOrigin = 'Anonymous';
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = img.width;
+                canvas.height = img.height;
+                canvas.getContext('2d').drawImage(img, 0, 0);
+                resolve(canvas.toDataURL('image/jpeg'));
+            };
+            img.onerror = () => resolve(null);
+            img.src = url;
+        });
+
+        // --- Helpers ---
+        const checkPageBreak = (neededHeight) => {
+            if (y + neededHeight > PH - 18) {
+                docPdf.addPage();
+                drawPageHeader();
+                y = 26;
+            }
+        };
+
+        const drawPageHeader = () => {
+            docPdf.setFillColor(...C.PRIMARY);
+            docPdf.rect(0, 0, PW, 16, 'F');
+            docPdf.setFillColor(...C.ACCENT);
+            docPdf.rect(0, 16, PW, 0.8, 'F');
+            docPdf.setTextColor(...C.WHITE);
+            docPdf.setFontSize(8);
+            docPdf.setFont("helvetica", "bold");
+            docPdf.text("PIA", M, 10);
+            docPdf.setFont("helvetica", "normal");
+            docPdf.setFontSize(7);
+            docPdf.text(`Reporte de Inspeccion  |  ${asset.name || ''}  |  REF: ${inspId}`, M + 12, 10);
+            docPdf.text(`Pagina ${docPdf.internal.getNumberOfPages()}`, PW - M, 10, { align: 'right' });
+        };
+
+        const drawSectionTitle = (title) => {
+            checkPageBreak(14);
+            docPdf.setFillColor(...C.SECTION_BG);
+            docPdf.roundedRect(M, y, CW, 9, 1.5, 1.5, 'F');
+            docPdf.setFillColor(...C.ACCENT);
+            docPdf.rect(M, y, 2.5, 9, 'F');
+            docPdf.setTextColor(...C.PRIMARY);
+            docPdf.setFontSize(9);
+            docPdf.setFont("helvetica", "bold");
+            docPdf.text(title, M + 7, y + 6.2);
+            y += 13;
+        };
+
+        // ============================================================
+        // PAGE 1 - COVER PAGE
+        // ============================================================
+        // Full dark background
+        docPdf.setFillColor(...C.PRIMARY);
+        docPdf.rect(0, 0, PW, PH, 'F');
+
+        // Accent stripe at top
+        docPdf.setFillColor(...C.ACCENT);
+        docPdf.rect(0, 0, PW, 3, 'F');
+
+        // Logo
+        if (logoData) {
+            try {
+                docPdf.addImage(logoData, 'PNG', M, 20, 22, 22);
+            } catch { /* logo render failed */ }
+        }
+
+        // PIA Title
+        const logoOffset = logoData ? 48 : M;
+        docPdf.setTextColor(...C.WHITE);
+        docPdf.setFontSize(36);
         docPdf.setFont("helvetica", "bold");
-        docPdf.setTextColor(...COLORS.ACCENT);
-        docPdf.text(`${totalChecked}`, MARGIN + statWidth * 0.5, statY, { align: 'center' });
-        docPdf.setFontSize(7);
+        docPdf.text("PIA", logoOffset, 34);
+        docPdf.setFontSize(11);
         docPdf.setFont("helvetica", "normal");
-        docPdf.setTextColor(...COLORS.TEXT_MUTED);
-        docPdf.text("ITEMS EVALUADOS", MARGIN + statWidth * 0.5, statY + 6, { align: 'center' });
+        docPdf.setTextColor(...C.TEXT_MUTED);
+        docPdf.text("Predictive Inspection App", logoOffset, 42);
 
-        // Vertical divider
-        docPdf.setDrawColor(...COLORS.DIVIDER);
+        // Horizontal separator
+        docPdf.setDrawColor(...C.ACCENT);
+        docPdf.setLineWidth(0.8);
+        docPdf.line(M, 55, PW - M, 55);
+
+        // "REPORTE DE INSPECCION" centered
+        docPdf.setTextColor(...C.WHITE);
+        docPdf.setFontSize(20);
+        docPdf.setFont("helvetica", "bold");
+        docPdf.text("REPORTE DE INSPECCION", PW / 2, 75, { align: 'center' });
+        docPdf.setFontSize(10);
+        docPdf.setFont("helvetica", "normal");
+        docPdf.setTextColor(...C.TEXT_MUTED);
+        docPdf.text("Inspeccion Predictiva de Mantenimiento", PW / 2, 83, { align: 'center' });
+
+        // Asset name - large
+        docPdf.setTextColor(...C.WHITE);
+        docPdf.setFontSize(28);
+        docPdf.setFont("helvetica", "bold");
+        const assetNameLines = docPdf.splitTextToSize(asset.name || "Activo", CW);
+        docPdf.text(assetNameLines, PW / 2, 110, { align: 'center' });
+        const nameLinesHeight = assetNameLines.length * 12;
+
+        // Tag and location
+        let coverY = 110 + nameLinesHeight + 4;
+        docPdf.setFontSize(11);
+        docPdf.setFont("helvetica", "normal");
+        docPdf.setTextColor(...C.TEXT_MUTED);
+        const tagLocParts = [];
+        if (asset.tag) tagLocParts.push(asset.tag);
+        if (asset.location) tagLocParts.push(asset.location);
+        if (tagLocParts.length) {
+            docPdf.text(tagLocParts.join('  |  '), PW / 2, coverY, { align: 'center' });
+            coverY += 8;
+        }
+
+        // Verdict banner
+        coverY += 10;
+        const verdictBannerW = 80;
+        const verdictBannerX = (PW - verdictBannerW) / 2;
+        docPdf.setFillColor(...verdictBg);
+        docPdf.roundedRect(verdictBannerX, coverY, verdictBannerW, 16, 3, 3, 'F');
+        docPdf.setTextColor(...verdictColor);
+        docPdf.setFontSize(14);
+        docPdf.setFont("helvetica", "bold");
+        docPdf.text(verdict, PW / 2, coverY + 11, { align: 'center' });
+        coverY += 30;
+
+        // Info grid on cover
+        const infoBoxY = coverY + 5;
+        const infoColW = CW / 2;
+
+        // Left column
+        docPdf.setFontSize(8);
+        docPdf.setTextColor(...C.TEXT_MUTED);
+        docPdf.setFont("helvetica", "normal");
+        docPdf.text("FECHA DE INSPECCION", M, infoBoxY);
+        docPdf.setFontSize(11);
+        docPdf.setTextColor(...C.WHITE);
+        docPdf.setFont("helvetica", "bold");
+        docPdf.text(dateStr, M, infoBoxY + 7);
+        if (timeStr) {
+            docPdf.setFontSize(9);
+            docPdf.setFont("helvetica", "normal");
+            docPdf.setTextColor(...C.TEXT_MUTED);
+            docPdf.text(timeStr + " hrs", M, infoBoxY + 13);
+        }
+
+        // Right column
+        docPdf.setFontSize(8);
+        docPdf.setTextColor(...C.TEXT_MUTED);
+        docPdf.setFont("helvetica", "normal");
+        docPdf.text("CRITICIDAD DEL ACTIVO", M + infoColW, infoBoxY);
+        docPdf.setFontSize(11);
+        docPdf.setFont("helvetica", "bold");
+        const critMap = {
+            'A': { label: 'A - CRITICA', color: C.RED },
+            'Alta': { label: 'A - CRITICA', color: C.RED },
+            'B': { label: 'B - IMPORTANTE', color: C.AMBER },
+            'Media': { label: 'B - IMPORTANTE', color: C.AMBER },
+            'C': { label: 'C - MODERADA', color: C.ACCENT },
+            'D': { label: 'D - BAJA', color: C.GREEN },
+        };
+        const critInfo = critMap[asset.criticality] || { label: asset.criticality || 'N/A', color: C.TEXT_MUTED };
+        docPdf.setTextColor(...critInfo.color);
+        docPdf.text(critInfo.label, M + infoColW, infoBoxY + 7);
+
+        // Second row
+        const infoRow2Y = infoBoxY + 24;
+        docPdf.setFontSize(8);
+        docPdf.setTextColor(...C.TEXT_MUTED);
+        docPdf.setFont("helvetica", "normal");
+        docPdf.text("REFERENCIA", M, infoRow2Y);
+        docPdf.setFontSize(11);
+        docPdf.setTextColor(...C.WHITE);
+        docPdf.setFont("helvetica", "bold");
+        docPdf.text(`REF-${inspId}`, M, infoRow2Y + 7);
+
+        docPdf.setFontSize(8);
+        docPdf.setTextColor(...C.TEXT_MUTED);
+        docPdf.setFont("helvetica", "normal");
+        docPdf.text("RESULTADO", M + infoColW, infoRow2Y);
+        docPdf.setFontSize(11);
+        docPdf.setFont("helvetica", "bold");
+        docPdf.setTextColor(...C.WHITE);
+        docPdf.text(`${okCount} OK  /  ${alertCount} Alertas  /  ${totalChecked} Total`, M + infoColW, infoRow2Y + 7);
+
+        // QR Code on cover
+        if (qrDataUrl) {
+            const qrSize = 28;
+            const qrX = PW - M - qrSize;
+            const qrY = PH - 55;
+            try {
+                docPdf.addImage(qrDataUrl, 'PNG', qrX, qrY, qrSize, qrSize);
+                docPdf.setFontSize(6);
+                docPdf.setTextColor(...C.TEXT_MUTED);
+                docPdf.text("Escanear para ver", qrX + qrSize / 2, qrY + qrSize + 4, { align: 'center' });
+                docPdf.text("reporte digital", qrX + qrSize / 2, qrY + qrSize + 8, { align: 'center' });
+            } catch { /* QR render failed */ }
+        }
+
+        // Cover footer
+        docPdf.setDrawColor(55, 65, 81);
         docPdf.setLineWidth(0.3);
-        docPdf.line(MARGIN + statWidth, y + 3, MARGIN + statWidth, y + 15);
-
-        // Stat 2: OK items
-        docPdf.setFontSize(13);
-        docPdf.setFont("helvetica", "bold");
-        docPdf.setTextColor(...COLORS.GREEN);
-        docPdf.text(`${okCount}`, MARGIN + statWidth * 1.5, statY, { align: 'center' });
+        docPdf.line(M, PH - 15, PW - M, PH - 15);
         docPdf.setFontSize(7);
-        docPdf.setFont("helvetica", "normal");
-        docPdf.setTextColor(...COLORS.TEXT_MUTED);
-        docPdf.text("CONFORME", MARGIN + statWidth * 1.5, statY + 6, { align: 'center' });
+        docPdf.setTextColor(...C.TEXT_MUTED);
+        docPdf.text("Documento generado automaticamente por PIA - Predictive Inspection App", M, PH - 8);
+        docPdf.text("Documento confidencial", PW - M, PH - 8, { align: 'right' });
 
-        // Vertical divider
-        docPdf.line(MARGIN + statWidth * 2, y + 3, MARGIN + statWidth * 2, y + 15);
+        // ============================================================
+        // PAGE 2+ - DETAILED CONTENT
+        // ============================================================
+        docPdf.addPage();
+        drawPageHeader();
+        y = 26;
+
+        // --- Summary Stats Bar ---
+        docPdf.setFillColor(...C.WHITE);
+        docPdf.setDrawColor(...C.BORDER);
+        docPdf.setLineWidth(0.4);
+        docPdf.roundedRect(M, y, CW, 22, 2, 2, 'FD');
+
+        const statW = CW / 4;
+        const statCY = y + 8;
+
+        // Stat 1: Total
+        docPdf.setFontSize(14);
+        docPdf.setFont("helvetica", "bold");
+        docPdf.setTextColor(...C.ACCENT);
+        docPdf.text(`${totalChecked}`, M + statW * 0.5, statCY, { align: 'center' });
+        docPdf.setFontSize(6.5);
+        docPdf.setFont("helvetica", "normal");
+        docPdf.setTextColor(...C.TEXT_MUTED);
+        docPdf.text("EVALUADOS", M + statW * 0.5, statCY + 7, { align: 'center' });
+
+        docPdf.setDrawColor(...C.DIVIDER);
+        docPdf.setLineWidth(0.3);
+        docPdf.line(M + statW, y + 4, M + statW, y + 18);
+
+        // Stat 2: OK
+        docPdf.setFontSize(14);
+        docPdf.setFont("helvetica", "bold");
+        docPdf.setTextColor(...C.GREEN);
+        docPdf.text(`${okCount}`, M + statW * 1.5, statCY, { align: 'center' });
+        docPdf.setFontSize(6.5);
+        docPdf.setFont("helvetica", "normal");
+        docPdf.setTextColor(...C.TEXT_MUTED);
+        docPdf.text("CONFORME", M + statW * 1.5, statCY + 7, { align: 'center' });
+
+        docPdf.line(M + statW * 2, y + 4, M + statW * 2, y + 18);
 
         // Stat 3: Alerts
-        docPdf.setFontSize(13);
+        docPdf.setFontSize(14);
         docPdf.setFont("helvetica", "bold");
-        docPdf.setTextColor(...(alertCount > 0 ? COLORS.RED : COLORS.GREEN));
-        docPdf.text(`${alertCount}`, MARGIN + statWidth * 2.5, statY, { align: 'center' });
-        docPdf.setFontSize(7);
+        docPdf.setTextColor(...(alertCount > 0 ? C.RED : C.GREEN));
+        docPdf.text(`${alertCount}`, M + statW * 2.5, statCY, { align: 'center' });
+        docPdf.setFontSize(6.5);
         docPdf.setFont("helvetica", "normal");
-        docPdf.setTextColor(...COLORS.TEXT_MUTED);
-        docPdf.text("ALERTAS", MARGIN + statWidth * 2.5, statY + 6, { align: 'center' });
+        docPdf.setTextColor(...C.TEXT_MUTED);
+        docPdf.text("ALERTAS", M + statW * 2.5, statCY + 7, { align: 'center' });
 
-        y += 26;
+        docPdf.line(M + statW * 3, y + 4, M + statW * 3, y + 18);
 
-        // --- Alerts Section ---
-        if (alerts.length > 0) {
-            drawSectionTitle("ALERTAS Y HALLAZGOS");
+        // Stat 4: Verdict
+        docPdf.setFontSize(9);
+        docPdf.setFont("helvetica", "bold");
+        docPdf.setTextColor(...verdictColor);
+        docPdf.text(verdict, M + statW * 3.5, statCY + 1, { align: 'center' });
+        docPdf.setFontSize(6.5);
+        docPdf.setFont("helvetica", "normal");
+        docPdf.setTextColor(...C.TEXT_MUTED);
+        docPdf.text("VEREDICTO", M + statW * 3.5, statCY + 7, { align: 'center' });
 
-            alerts.forEach(alert => {
-                const alertText = alert.text || alert.detail || "Alerta reportada";
-                const contentLines = docPdf.splitTextToSize(alertText, CONTENT_WIDTH - 18);
-                const textLineHeight = 5;
-                const boxHeight = Math.max(12, 6 + contentLines.length * textLineHeight);
+        y += 28;
 
-                checkPageBreak(boxHeight + 5);
+        // --- Full Checklist Table ---
+        drawSectionTitle("CHECKLIST COMPLETO DE INSPECCION");
 
-                // Alert card with left red border
-                docPdf.setFillColor(...COLORS.RED_LIGHT);
-                docPdf.roundedRect(MARGIN, y, CONTENT_WIDTH, boxHeight, 1.5, 1.5, 'F');
-                docPdf.setFillColor(...COLORS.RED);
-                docPdf.rect(MARGIN, y, 2.5, boxHeight, 'F');
+        // Table header
+        const col1W = 10;     // #
+        const col2W = 16;     // Category
+        const col3W = CW - col1W - col2W - 22; // Description
+        const col4W = 22;     // Status
+        const rowH = 7;
 
-                // Alert icon indicator
-                docPdf.setFontSize(7);
-                docPdf.setFont("helvetica", "bold");
-                docPdf.setTextColor(...COLORS.RED);
-                docPdf.text("!", MARGIN + 8, y + boxHeight / 2 + 1, { align: 'center' });
+        docPdf.setFillColor(...C.TABLE_HEADER);
+        docPdf.roundedRect(M, y, CW, rowH, 1, 1, 'F');
+        docPdf.setFontSize(7);
+        docPdf.setFont("helvetica", "bold");
+        docPdf.setTextColor(...C.TEXT_SECONDARY);
+        docPdf.text("#", M + 3, y + 5);
+        docPdf.text("TIPO", M + col1W + 2, y + 5);
+        docPdf.text("DESCRIPCION", M + col1W + col2W + 2, y + 5);
+        docPdf.text("ESTADO", M + CW - col4W + 2, y + 5);
+        y += rowH;
 
-                // Alert text
-                docPdf.setTextColor(...COLORS.TEXT_PRIMARY);
-                docPdf.setFontSize(9);
-                docPdf.setFont("helvetica", "normal");
-                contentLines.forEach((line, idx) => {
-                    docPdf.text(line, MARGIN + 13, y + 5 + idx * textLineHeight);
-                });
+        // Table rows
+        allResults.forEach((item, idx) => {
+            checkPageBreak(rowH + 1);
+            const isAlert = item.answer === 'No' || item.status === 'ALERT' || item.cumple === false;
 
-                y += boxHeight + 4;
-            });
-            y += 4;
-        }
+            // Alternate row background
+            if (idx % 2 === 0) {
+                docPdf.setFillColor(...C.TABLE_STRIPE);
+                docPdf.rect(M, y, CW, rowH, 'F');
+            }
 
-        // --- OK Items Section ---
-        if (okItems.length > 0) {
-            drawSectionTitle("ITEMS CONFORMES");
+            // Left color indicator
+            if (isAlert) {
+                docPdf.setFillColor(...C.RED);
+            } else {
+                docPdf.setFillColor(...C.GREEN);
+            }
+            docPdf.rect(M, y, 1.5, rowH, 'F');
 
-            // Compact 2-column layout for OK items
-            const colWidth = (CONTENT_WIDTH - 6) / 2;
-            let col = 0;
-            let rowY = y;
-
-            okItems.forEach((item, idx) => {
-                const itemText = item.text || item.detail || "Item conforme";
-                const truncText = itemText.length > 55 ? itemText.substring(0, 52) + '...' : itemText;
-
-                if (col === 0) {
-                    checkPageBreak(8);
-                    rowY = y;
-                }
-
-                const xOffset = MARGIN + col * (colWidth + 6);
-
-                // Small green dot
-                docPdf.setFillColor(...COLORS.GREEN);
-                docPdf.roundedRect(xOffset + 2, rowY + 1.3, 2.4, 2.4, 1.2, 1.2, 'F');
-
-                // Item text
-                docPdf.setTextColor(...COLORS.TEXT_SECONDARY);
-                docPdf.setFontSize(8);
-                docPdf.setFont("helvetica", "normal");
-                docPdf.text(truncText, xOffset + 7, rowY + 3.5);
-
-                if (col === 1) {
-                    y = rowY + 7;
-                    col = 0;
-                } else {
-                    col = 1;
-                }
-            });
-            if (col === 1) y = rowY + 7;
-            y += 6;
-        }
-
-        // --- No alerts message ---
-        if (alerts.length === 0 && totalChecked > 0) {
-            checkPageBreak(18);
-            docPdf.setFillColor(...COLORS.GREEN_BG);
-            docPdf.roundedRect(MARGIN, y, CONTENT_WIDTH, 14, 2, 2, 'F');
-            docPdf.setFillColor(...COLORS.GREEN);
-            docPdf.rect(MARGIN, y, 2.5, 14, 'F');
-            docPdf.setTextColor(...COLORS.GREEN);
-            docPdf.setFontSize(10);
-            docPdf.setFont("helvetica", "bold");
-            docPdf.text("Sin anomalias detectadas", MARGIN + 10, y + 6);
-            docPdf.setFontSize(8);
+            docPdf.setFontSize(7);
             docPdf.setFont("helvetica", "normal");
-            docPdf.setTextColor(...COLORS.TEXT_SECONDARY);
-            docPdf.text("Todos los items evaluados se encuentran dentro de los parametros aceptables.", MARGIN + 10, y + 11);
-            y += 20;
-        }
+            docPdf.setTextColor(...C.TEXT_MUTED);
+            docPdf.text(`${idx + 1}`, M + 3, y + 5);
+
+            // Category badge
+            const cat = item.category || 'IV';
+            docPdf.setFontSize(6);
+            docPdf.setFont("helvetica", "bold");
+            if (cat === 'IS') {
+                docPdf.setFillColor(219, 234, 254);
+                docPdf.roundedRect(M + col1W, y + 1.5, 12, 4, 1, 1, 'F');
+                docPdf.setTextColor(...C.ACCENT);
+            } else {
+                docPdf.setFillColor(243, 232, 255);
+                docPdf.roundedRect(M + col1W, y + 1.5, 12, 4, 1, 1, 'F');
+                docPdf.setTextColor(124, 58, 237);
+            }
+            docPdf.text(cat, M + col1W + 6, y + 4.5, { align: 'center' });
+
+            // Description text
+            docPdf.setFontSize(7);
+            docPdf.setFont("helvetica", "normal");
+            docPdf.setTextColor(...C.TEXT_PRIMARY);
+            const itemText = item.text || item.detail || 'Item';
+            const truncated = itemText.length > 80 ? itemText.substring(0, 77) + '...' : itemText;
+            docPdf.text(truncated, M + col1W + col2W + 2, y + 5);
+
+            // Status badge
+            if (isAlert) {
+                docPdf.setFillColor(...C.RED_LIGHT);
+                docPdf.roundedRect(M + CW - col4W, y + 1, 20, 5, 1.5, 1.5, 'F');
+                docPdf.setTextColor(...C.RED);
+                docPdf.setFontSize(6.5);
+                docPdf.setFont("helvetica", "bold");
+                docPdf.text("ALERTA", M + CW - col4W + 10, y + 4.8, { align: 'center' });
+            } else {
+                docPdf.setFillColor(...C.GREEN_LIGHT);
+                docPdf.roundedRect(M + CW - col4W, y + 1, 20, 5, 1.5, 1.5, 'F');
+                docPdf.setTextColor(...C.GREEN);
+                docPdf.setFontSize(6.5);
+                docPdf.setFont("helvetica", "bold");
+                docPdf.text("OK", M + CW - col4W + 10, y + 4.8, { align: 'center' });
+            }
+
+            y += rowH;
+        });
+
+        // Table bottom border
+        docPdf.setDrawColor(...C.BORDER);
+        docPdf.setLineWidth(0.3);
+        docPdf.line(M, y, M + CW, y);
+        y += 8;
 
         // --- Observations ---
         if (selectedInspection.notes) {
             drawSectionTitle("OBSERVACIONES Y COMENTARIOS");
             checkPageBreak(16);
-
-            // Styled note box
-            const noteLines = docPdf.splitTextToSize(selectedInspection.notes, CONTENT_WIDTH - 16);
+            const noteLines = docPdf.splitTextToSize(selectedInspection.notes, CW - 16);
             const noteBoxH = Math.max(14, 8 + noteLines.length * 4.5);
-            docPdf.setFillColor(...COLORS.SECTION_BG);
-            docPdf.roundedRect(MARGIN, y, CONTENT_WIDTH, noteBoxH, 1.5, 1.5, 'F');
-            docPdf.setDrawColor(...COLORS.BORDER);
+            docPdf.setFillColor(...C.SECTION_BG);
+            docPdf.roundedRect(M, y, CW, noteBoxH, 1.5, 1.5, 'F');
+            docPdf.setDrawColor(...C.BORDER);
             docPdf.setLineWidth(0.3);
-            docPdf.roundedRect(MARGIN, y, CONTENT_WIDTH, noteBoxH, 1.5, 1.5, 'S');
-
-            docPdf.setTextColor(...COLORS.TEXT_PRIMARY);
+            docPdf.roundedRect(M, y, CW, noteBoxH, 1.5, 1.5, 'S');
+            docPdf.setTextColor(...C.TEXT_PRIMARY);
             docPdf.setFontSize(9);
             docPdf.setFont("helvetica", "normal");
-            docPdf.text(noteLines, MARGIN + 8, y + 6);
+            docPdf.text(noteLines, M + 8, y + 6);
             y += noteBoxH + 8;
         }
 
-        // --- Photos ---
+        // --- Mini Trend Chart ---
+        if (trendData.length >= 2) {
+            drawSectionTitle("TENDENCIA DE ESTADO DEL ACTIVO");
+            checkPageBreak(50);
+
+            const chartX = M + 10;
+            const chartW = CW - 20;
+            const chartH = 35;
+            const chartBottom = y + chartH;
+
+            // Chart background
+            docPdf.setFillColor(...C.WHITE);
+            docPdf.setDrawColor(...C.BORDER);
+            docPdf.setLineWidth(0.3);
+            docPdf.roundedRect(M, y - 2, CW, chartH + 10, 2, 2, 'FD');
+
+            // Y-axis labels and reference lines
+            const levels = [
+                { label: 'A', val: 3, color: C.GREEN },
+                { label: 'B', val: 2, color: C.AMBER },
+                { label: 'C', val: 1, color: C.RED },
+            ];
+
+            levels.forEach(lv => {
+                const ly = chartBottom - (lv.val / 3) * chartH;
+                docPdf.setDrawColor(...C.DIVIDER);
+                docPdf.setLineWidth(0.15);
+                docPdf.line(chartX, ly, chartX + chartW, ly);
+                docPdf.setFontSize(7);
+                docPdf.setFont("helvetica", "bold");
+                docPdf.setTextColor(...lv.color);
+                docPdf.text(lv.label, chartX - 5, ly + 2, { align: 'center' });
+            });
+
+            // Plot line
+            const points = trendData.map((d, i) => ({
+                x: chartX + (i / (trendData.length - 1)) * chartW,
+                y: chartBottom - (d.value / 3) * chartH
+            }));
+
+            docPdf.setDrawColor(...C.ACCENT);
+            docPdf.setLineWidth(0.8);
+            for (let i = 1; i < points.length; i++) {
+                docPdf.line(points[i - 1].x, points[i - 1].y, points[i].x, points[i].y);
+            }
+
+            // Plot dots
+            points.forEach((p, i) => {
+                const val = trendData[i].value;
+                const dotColor = val >= 3 ? C.GREEN : val >= 2 ? C.AMBER : C.RED;
+                docPdf.setFillColor(...dotColor);
+                docPdf.roundedRect(p.x - 1.5, p.y - 1.5, 3, 3, 1.5, 1.5, 'F');
+            });
+
+            // X-axis labels
+            docPdf.setFontSize(5.5);
+            docPdf.setFont("helvetica", "normal");
+            docPdf.setTextColor(...C.TEXT_MUTED);
+            trendData.forEach((d, i) => {
+                const px = chartX + (i / (trendData.length - 1)) * chartW;
+                const label = d.date?.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' }) || '';
+                docPdf.text(label, px, chartBottom + 5, { align: 'center' });
+            });
+
+            y = chartBottom + 12;
+        }
+
+        // --- Photos (2x2 grid) ---
         if (selectedInspection.photoURLs && selectedInspection.photoURLs.length > 0) {
             drawSectionTitle("EVIDENCIA FOTOGRAFICA");
 
-            const getImageData = (url) => {
-                return new Promise((resolve) => {
-                    const img = new Image();
-                    img.crossOrigin = 'Anonymous';
-                    img.onload = () => {
-                        const canvas = document.createElement('canvas');
-                        canvas.width = img.width;
-                        canvas.height = img.height;
-                        const ctx = canvas.getContext('2d');
-                        ctx.drawImage(img, 0, 0);
-                        resolve(canvas.toDataURL('image/jpeg'));
-                    };
-                    img.onerror = () => resolve(null);
-                    img.src = url;
-                });
-            };
+            const photoW = (CW - 6) / 2; // 2 columns with gap
+            const photos = selectedInspection.photoURLs;
+            let col = 0;
+            let rowStartY = y;
 
-            for (let i = 0; i < selectedInspection.photoURLs.length; i++) {
-                const url = selectedInspection.photoURLs[i];
-                checkPageBreak(70);
+            for (let i = 0; i < photos.length; i++) {
+                const url = photos[i];
+
+                if (col === 0) {
+                    checkPageBreak(65);
+                    rowStartY = y;
+                }
+
+                const xPos = M + col * (photoW + 6);
 
                 try {
                     const imgData = await getImageData(url);
                     if (imgData) {
                         const imgProps = docPdf.getImageProperties(imgData);
                         const imgRatio = imgProps.height / imgProps.width;
-                        const imgWidth = Math.min(90, CONTENT_WIDTH * 0.5);
-                        const imgHeight = imgWidth * imgRatio;
-                        const totalH = imgHeight + 10;
+                        const dispW = photoW - 4;
+                        const dispH = Math.min(dispW * imgRatio, 55);
 
-                        checkPageBreak(totalH + 10);
-
-                        // Image container with border
-                        docPdf.setDrawColor(...COLORS.BORDER);
+                        // Image frame
+                        docPdf.setDrawColor(...C.BORDER);
                         docPdf.setLineWidth(0.3);
-                        docPdf.roundedRect(MARGIN, y, imgWidth + 6, imgHeight + 12, 2, 2, 'S');
+                        docPdf.roundedRect(xPos, rowStartY, photoW, dispH + 10, 2, 2, 'S');
 
-                        docPdf.addImage(imgData, 'JPEG', MARGIN + 3, y + 3, imgWidth, imgHeight);
-                        docPdf.link(MARGIN + 3, y + 3, imgWidth, imgHeight, { url: url });
+                        docPdf.addImage(imgData, 'JPEG', xPos + 2, rowStartY + 2, dispW, dispH);
+                        docPdf.link(xPos + 2, rowStartY + 2, dispW, dispH, { url });
 
                         // Caption
-                        docPdf.setFontSize(7);
-                        docPdf.setTextColor(...COLORS.TEXT_MUTED);
+                        docPdf.setFontSize(6.5);
+                        docPdf.setTextColor(...C.TEXT_MUTED);
                         docPdf.setFont("helvetica", "normal");
-                        docPdf.text(`Foto ${i + 1} de ${selectedInspection.photoURLs.length}`, MARGIN + 3, y + imgHeight + 9);
+                        docPdf.text(`Foto ${i + 1} de ${photos.length}`, xPos + 2, rowStartY + dispH + 7);
 
-                        y += imgHeight + 18;
+                        if (col === 1) {
+                            y = rowStartY + dispH + 14;
+                            col = 0;
+                        } else {
+                            col = 1;
+                        }
                     } else {
-                        docPdf.setTextColor(...COLORS.ACCENT);
-                        docPdf.setFontSize(9);
-                        docPdf.textWithLink(`Ver foto ${i + 1} en navegador`, MARGIN, y, { url: url });
-                        y += 8;
+                        docPdf.setTextColor(...C.ACCENT);
+                        docPdf.setFontSize(8);
+                        docPdf.textWithLink(`Ver foto ${i + 1}`, xPos, rowStartY + 4, { url });
+                        if (col === 1) { y = rowStartY + 10; col = 0; } else { col = 1; }
                     }
                 } catch {
-                    docPdf.setTextColor(...COLORS.ACCENT);
-                    docPdf.setFontSize(9);
-                    docPdf.textWithLink(`Ver foto ${i + 1} en navegador`, MARGIN, y, { url: url });
-                    y += 8;
+                    docPdf.setTextColor(...C.ACCENT);
+                    docPdf.setFontSize(8);
+                    docPdf.textWithLink(`Ver foto ${i + 1}`, xPos, rowStartY + 4, { url });
+                    if (col === 1) { y = rowStartY + 10; col = 0; } else { col = 1; }
                 }
             }
+            if (col === 1) y = rowStartY + 65;
+            y += 6;
         }
+
+        // --- Signature Area ---
+        checkPageBreak(45);
+        drawSectionTitle("FIRMAS DE CONFORMIDAD");
+
+        const sigW = (CW - 20) / 2;
+        const sigY = y;
+
+        // Inspector signature
+        docPdf.setDrawColor(...C.BORDER);
+        docPdf.setLineWidth(0.3);
+        docPdf.line(M, sigY + 20, M + sigW, sigY + 20);
+        docPdf.setFontSize(8);
+        docPdf.setFont("helvetica", "bold");
+        docPdf.setTextColor(...C.TEXT_PRIMARY);
+        docPdf.text("Inspector / Tecnico", M, sigY + 26);
+        docPdf.setFontSize(7);
+        docPdf.setFont("helvetica", "normal");
+        docPdf.setTextColor(...C.TEXT_MUTED);
+        docPdf.text("Nombre y firma", M, sigY + 31);
+        docPdf.text(`ID: ${selectedInspection.inspectorUserId?.slice(0, 8) || 'N/A'}`, M, sigY + 36);
+
+        // Supervisor signature
+        const sig2X = M + sigW + 20;
+        docPdf.setDrawColor(...C.BORDER);
+        docPdf.line(sig2X, sigY + 20, sig2X + sigW, sigY + 20);
+        docPdf.setFontSize(8);
+        docPdf.setFont("helvetica", "bold");
+        docPdf.setTextColor(...C.TEXT_PRIMARY);
+        docPdf.text("Supervisor / Responsable", sig2X, sigY + 26);
+        docPdf.setFontSize(7);
+        docPdf.setFont("helvetica", "normal");
+        docPdf.setTextColor(...C.TEXT_MUTED);
+        docPdf.text("Nombre y firma", sig2X, sigY + 31);
+
+        y = sigY + 42;
 
         // --- Footer on all pages ---
         const pageCount = docPdf.internal.getNumberOfPages();
         for (let i = 1; i <= pageCount; i++) {
             docPdf.setPage(i);
-            // Footer line
-            docPdf.setDrawColor(...COLORS.DIVIDER);
+            if (i === 1) continue; // Cover has its own footer
+            docPdf.setDrawColor(...C.DIVIDER);
             docPdf.setLineWidth(0.3);
-            docPdf.line(MARGIN, PAGE_HEIGHT - 12, PAGE_WIDTH - MARGIN, PAGE_HEIGHT - 12);
-            // Footer text left
+            docPdf.line(M, PH - 12, PW - M, PH - 12);
             docPdf.setFontSize(7);
-            docPdf.setTextColor(...COLORS.TEXT_MUTED);
+            docPdf.setTextColor(...C.TEXT_MUTED);
             docPdf.setFont("helvetica", "normal");
-            docPdf.text("Generado por PIA - Predictive Inspection App", MARGIN, PAGE_HEIGHT - 7);
-            // Page number right
-            docPdf.text(`Pagina ${i} de ${pageCount}`, PAGE_WIDTH - MARGIN, PAGE_HEIGHT - 7, { align: 'right' });
+            docPdf.text("PIA - Predictive Inspection App", M, PH - 7);
+            docPdf.text(`REF-${inspId}  |  ${dateStr}`, PW / 2, PH - 7, { align: 'center' });
+            docPdf.text(`Pagina ${i} de ${pageCount}`, PW - M, PH - 7, { align: 'right' });
         }
 
         const dateSlug = selectedInspection.date ? selectedInspection.date.toISOString().slice(0, 10) : 'sin-fecha';
